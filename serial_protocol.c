@@ -364,7 +364,7 @@ static inline void _sd_main_loop_iterate(void){
                   if(SD_CMDS[hdr->cmd].tx_callback != NULL){
                     call_callback_build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_callback);
                   }else{
-                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);
+                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);//report our prefered size
                   }
                 }//end variable size format
               }else{//set CMD
@@ -408,9 +408,25 @@ static inline void _sd_main_loop_iterate(void){
                 }else{//variable size format, or wrong configuration
                   //call tx callback to fill variable data
                   if(SD_CMDS[hdr->cmd].rx_callback != NULL){
-                    call_callback_build_and_send_package(hdr,SD_CMDS[hdr->cmd].rx_callback);
+                    //receive body in temporary buffer
+                    if(sd_lock_buffer(500)){
+                      if(cobs_receive_decode(hdr->size, cobs_buf_p, hdr->invchksumm) == hdr->size ){
+                        //got body
+                        uint8_t callback_status = SD_CMDS[hdr->cmd].rx_callback(hdr->size, cobs_buf_p, NULL);
+                        sd_unlock_buffer();
+
+                        if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
+                          //send ak
+                          system_message_answer(hdr,SP_OK,callback_status);
+                        }
+
+                      }else {//body error
+                        sd_unlock_buffer();
+                        system_message_answer(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
+                      }
+                    }//sd_lock_buffer
                   }else{
-                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].rx_data_size);
+                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].rx_data_size);//report our prefered size
                   }
                 }//end RX variable size format
 
