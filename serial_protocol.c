@@ -30,6 +30,7 @@
 #define SD_HEADER_SIZE 4
 #define SD_MAX_PACKET (SD_BUFFER_LENGTH - 1 - SD_HEADER_SIZE - COBSBUF_RAW_DATA_OFFCET) /*246 bytes*/
 
+#define MIN(A,B) ( (A) > (B) ? (B) : (A) )
 static uint8_t last_sequence;//4bits counter
 
 static uint8_t * const cobs_buf_p = (uint8_t *)&cobs_buf1;
@@ -134,9 +135,10 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
     raw[0]=hdrp[0];//sequence
     raw[1]=hdrp[1];//cmd
 
+    uint8_t *raw_body = raw + SD_HEADER_SIZE;
 
-    if(bodysize > 0){
-      uint8_t *raw_body = raw + SD_HEADER_SIZE;
+    if(bodysize > 0 && body != raw_body){//if body == raw_body then buffer already filled
+
       uint8_t raw_body_checksumm = 0;
       //copy body to temporary buffer, calculate checksumm
       sd_syslock();
@@ -299,19 +301,34 @@ static inline void _sd_main_loop_iterate(void){
                 //get CMD
                 hdr->cmd = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit
 
-                if(SD_CMDS[hdr->cmd].tx_data_size == hdr->size){
-                  build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_data_size,SD_CMDS[hdr->cmd].tx_data);
+                if(SD_CMDS[hdr->cmd].tx_data_size != 0 ){//fixed size format
+                  if(SD_CMDS[hdr->cmd].tx_data_size == hdr->size){//check size
+                    build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_data_size,SD_CMDS[hdr->cmd].tx_data);
 
-                  //tx callback
-                  if(SD_CMDS[hdr->cmd].tx_callback != NULL){
-                    SD_CMDS[hdr->cmd].tx_callback(hdr->size,SD_CMDS[hdr->cmd].tx_data,SD_CMDS[hdr->cmd].tx_arg);
+                    //tx callback
+                    if(SD_CMDS[hdr->cmd].tx_callback != NULL){
+                      SD_CMDS[hdr->cmd].tx_callback(hdr->size,SD_CMDS[hdr->cmd].tx_data,SD_CMDS[hdr->cmd].tx_arg);
+                    }
+                  }else{
+                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);
                   }
-                }else{
-                  skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);
-                }
-
+                }else{//variable size format, or wrong configuration
+                  //call tx callback to fill variable data
+                  if(SD_CMDS[hdr->cmd].tx_callback != NULL){
+                    uint8_t size = MIN(SD_MAX_PACKET,hdr->size);//max packet size
+                    uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET + SD_HEADER_SIZE;
+                    uint8_t invchksumm = SD_CMDS[hdr->cmd].tx_callback(0,raw,&size);
+                    if(invchksumm != 0){//filled data succsessfull
+                      hdr->size = size;
+                      hdr->invchksumm = invchksumm;
+                      build_and_send_package(hdr,size,raw);
+                    }
+                  }else{
+                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);
+                  }
+                }//end variable size format
               }else{//set CMD
-                if( SD_CMDS[hdr->cmd].rx_data_size == hdr->size ){
+                if( SD_CMDS[hdr->cmd].rx_data_size == hdr->size ){//fixed size format
 
                   //receive body in temporary buffer
                   if(sd_lock_buffer(500)){
@@ -348,8 +365,21 @@ static inline void _sd_main_loop_iterate(void){
                     }
                   }//sd_lock_buffer
 
-                }else
-                  skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].rx_data_size);
+                }else{//variable size format, or wrong configuration
+                  //call tx callback to fill variable data
+                  if(SD_CMDS[hdr->cmd].rx_callback != NULL){
+                    uint8_t size = MIN(SD_MAX_PACKET,hdr->size);//max packet size
+                    uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET + SD_HEADER_SIZE;
+                    uint8_t invchksumm = SD_CMDS[hdr->cmd].rx_callback(0,raw,&size);
+                    if(invchksumm != 0){//filled data succsessfull
+                      hdr->size = size;
+                      hdr->invchksumm = invchksumm;
+                      build_and_send_package(hdr,size,raw);
+                    }
+                  }else{
+                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].rx_data_size);
+                  }
+                }//end RX variable size format
 
               }//CMD set
             }else
