@@ -358,8 +358,8 @@ void sd_protocol_inform(uint8_t sequence,uint8_t cmd,uint8_t state){
     case   SP_OK:
       c="SP_OK";
     break;
-    case SP_UNCKNOWNCMD:
-      c="SP_UNCKNOWNCMD";
+    case SP_UNKNOWNCMD:
+      c="SP_UNKNOWNCMD";
     break;
     case SP_WRONGCHECKSUMM:
       c="SP_WRONGCHECKSUMM";

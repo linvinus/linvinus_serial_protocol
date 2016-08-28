@@ -1,8 +1,8 @@
 CC=gcc
-CFLAGS =-Wall -Wextra  -O0 -g -I . -I .. -I ../.. -I../../COBS
+CFLAGS =-Wall -Wextra  -O0 -g -I . -I .. -I ../examples -I../COBS
 LDFLAGS=-pthread
 
-SRCS = $(wildcard *.c) ../serial_protocol.c ../../COBS/cobs.c
+SRCS = $(wildcard *.c) ../serial_protocol.c ../COBS/cobs.c
 OBJS = $(SRCS:%.c=%.o)
 EXE = main
 
