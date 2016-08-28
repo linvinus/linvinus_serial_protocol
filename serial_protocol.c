@@ -135,21 +135,26 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
     raw[0]=hdrp[0];//sequence
     raw[1]=hdrp[1];//cmd
 
-    if(bodysize > 0 && body != NULL){
-      uint8_t *raw_body = raw + SD_HEADER_SIZE;
-      uint8_t raw_body_checksumm = 0;
-      //copy body to temporary buffer, calculate checksumm
-      sd_syslock();
-        for( i=0; i < bodysize; i++){
-          raw_body[i] = body[i];
-          raw_body_checksumm += body[i];
-        }
-        //~ memccpy(,,bodysize,sizeof(uint8_t));
-      sd_sysunlock();
+    if(bodysize > 0){
+      if( body != NULL ){
+        uint8_t *raw_body = raw + SD_HEADER_SIZE;
+        uint8_t raw_body_checksumm = 0;
+        //copy body to temporary buffer, calculate checksumm
+        sd_syslock();
+          for( i=0; i < bodysize; i++){
+            raw_body[i] = body[i];
+            raw_body_checksumm += body[i];
+          }
+          //~ memccpy(,,bodysize,sizeof(uint8_t));
+        sd_sysunlock();
 
-      raw[2] = bodysize;//size
-      raw[3] = (uint8_t)~raw_body_checksumm;//invchksumm
-    }else{
+        raw[2] = bodysize;//size
+        raw[3] = (uint8_t)~raw_body_checksumm;//invchksumm
+      }else{
+        sd_unlock_buffer();
+        return -1; //protocol error, bodysize >0 but body == NULL
+      }
+    }else{//no body
       raw[2] = hdrp[2];//in size, some usefull data
       raw[3] = hdrp[3];//in invchksumm, some usefull data
     }
