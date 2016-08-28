@@ -135,10 +135,8 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
     raw[0]=hdrp[0];//sequence
     raw[1]=hdrp[1];//cmd
 
-    uint8_t *raw_body = raw + SD_HEADER_SIZE;
-
-    if(bodysize > 0 && body != raw_body){//if body == raw_body then buffer already filled
-
+    if(bodysize > 0 && body != NULL){
+      uint8_t *raw_body = raw + SD_HEADER_SIZE;
       uint8_t raw_body_checksumm = 0;
       //copy body to temporary buffer, calculate checksumm
       sd_syslock();
@@ -155,6 +153,50 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
       raw[2] = hdrp[2];//in size, some usefull data
       raw[3] = hdrp[3];//in invchksumm, some usefull data
     }
+
+    pktsize = bodysize + SD_HEADER_SIZE;//body + header
+
+    pktsize = cobs_encode(raw,pktsize,cobs_buf_p);//move to the left
+
+    if( sd_put_timeout(COBS_SYMBOL,100) == 0 ){//start of packet
+      size_t rc = sd_write_timeout(cobs_buf_p,pktsize,500);//send encoded data
+      sd_unlock_buffer();
+      return (rc == pktsize ? (int16_t)rc : -1 ); //-1 //protocol error
+    }else{
+      sd_unlock_buffer();
+      return -1; //protocol error
+    }
+  }
+    else return -1; //LOCK error
+
+}//build_and_send_package
+
+static int16_t call_callback_build_and_send_package(sd_header_t *hdr,SD_CALLBACK callback){
+  uint16_t pktsize=0;
+  uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET;//after cobs_encode data will be starting from [0]
+  uint8_t *hdrp=(uint8_t *)hdr;
+
+  if( callback != NULL && sd_lock_buffer(500)){//try to lock with timeout
+
+    uint8_t *raw_body = raw + SD_HEADER_SIZE;
+    uint8_t bodysize = MIN(SD_MAX_PACKET,hdr->size);//max packet size
+    sd_syslock();
+    uint8_t invchksumm = callback(0,raw_body,&bodysize);
+    if(invchksumm != 0){//filled data succsessfull
+      hdr->size = bodysize;//manually fill header
+      hdr->invchksumm = invchksumm;
+    }else{
+      sd_sysunlock();
+      sd_unlock_buffer();
+      return -1; //callback didn't return data
+    }
+    sd_sysunlock();
+
+
+    raw[0] = hdrp[0];//sequence
+    raw[1] = hdrp[1];//cmd
+    raw[2] = hdrp[2];//size
+    raw[3] = hdrp[3];//invchksumm
 
     pktsize = bodysize + SD_HEADER_SIZE;//body + header
 
@@ -315,14 +357,7 @@ static inline void _sd_main_loop_iterate(void){
                 }else{//variable size format, or wrong configuration
                   //call tx callback to fill variable data
                   if(SD_CMDS[hdr->cmd].tx_callback != NULL){
-                    uint8_t size = MIN(SD_MAX_PACKET,hdr->size);//max packet size
-                    uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET + SD_HEADER_SIZE;
-                    uint8_t invchksumm = SD_CMDS[hdr->cmd].tx_callback(0,raw,&size);
-                    if(invchksumm != 0){//filled data succsessfull
-                      hdr->size = size;
-                      hdr->invchksumm = invchksumm;
-                      build_and_send_package(hdr,size,raw);
-                    }
+                    call_callback_build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_callback);
                   }else{
                     skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);
                   }
@@ -368,14 +403,7 @@ static inline void _sd_main_loop_iterate(void){
                 }else{//variable size format, or wrong configuration
                   //call tx callback to fill variable data
                   if(SD_CMDS[hdr->cmd].rx_callback != NULL){
-                    uint8_t size = MIN(SD_MAX_PACKET,hdr->size);//max packet size
-                    uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET + SD_HEADER_SIZE;
-                    uint8_t invchksumm = SD_CMDS[hdr->cmd].rx_callback(0,raw,&size);
-                    if(invchksumm != 0){//filled data succsessfull
-                      hdr->size = size;
-                      hdr->invchksumm = invchksumm;
-                      build_and_send_package(hdr,size,raw);
-                    }
+                    call_callback_build_and_send_package(hdr,SD_CMDS[hdr->cmd].rx_callback);
                   }else{
                     skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].rx_data_size);
                   }
