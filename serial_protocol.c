@@ -234,7 +234,7 @@ static inline void skip(sd_header_t *hdr){
     ;
 }
 
-static inline void answer(sd_header_t *hdr, SerialPacketSystemMessageReason_t reason, uint8_t status){
+static inline void system_message_answer(sd_header_t *hdr, SerialPacketSystemMessageReason_t reason, uint8_t status){
   /*USED SYSTEM MESSAGE FORMAT! SEE ABOVE*/
   hdr->sequence = SD_SEQ_CREATE(hdr->sequence,0)| SD_SEQ_SYSMES_MASK(reason);//remove confirm bit, add reason
   hdr->size = hdr->cmd;                          //store current cmd in size
@@ -245,7 +245,7 @@ static inline void answer(sd_header_t *hdr, SerialPacketSystemMessageReason_t re
 
 static inline void skip_and_aswer(sd_header_t *hdr, SerialPacketSystemMessageReason_t err, uint8_t status){
   skip(hdr);
-  answer(hdr,err,status);
+  system_message_answer(hdr,err,status);
 }
 
 uint8_t calculate_version_checksumm(void){
@@ -284,7 +284,7 @@ static inline void _sd_main_loop_iterate(void){
       if( cobs_start_receiving_and_decode(SD_HEADER_SIZE,header) == SD_HEADER_SIZE ){
         //got header
         if(hdr->cmd == SD_CMD_CREATE_GET(SP_SYSTEM_MESSAGE) ){//special case,"get version"
-          answer(hdr,SP_VERSION,calculate_version_checksumm());
+          system_message_answer(hdr,SP_VERSION,calculate_version_checksumm());
         }else if(hdr->cmd == SP_SYSTEM_MESSAGE){//received protocol information
             sd_broadcast_system_message(hdr->sequence, hdr->size, hdr->invchksumm,500);
             sd_protocol_inform(hdr->sequence, hdr->size, hdr->invchksumm);
@@ -299,7 +299,16 @@ static inline void _sd_main_loop_iterate(void){
                 //get CMD
                 hdr->cmd = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit
 
-                build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_data_size,SD_CMDS[hdr->cmd].tx_data);
+                if(SD_CMDS[hdr->cmd].tx_data_size == hdr->size){
+                  build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_data_size,SD_CMDS[hdr->cmd].tx_data);
+
+                  //tx callback
+                  if(SD_CMDS[hdr->cmd].tx_callback != NULL){
+                    SD_CMDS[hdr->cmd].tx_callback(hdr->size,SD_CMDS[hdr->cmd].tx_data,SD_CMDS[hdr->cmd].tx_arg);
+                  }
+                }else{
+                  skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);
+                }
 
               }else{//set CMD
                 if( SD_CMDS[hdr->cmd].rx_data_size == hdr->size ){
@@ -331,16 +340,16 @@ static inline void _sd_main_loop_iterate(void){
 
                       if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
                         //send ak
-                        answer(hdr,SP_OK,callback_status);
+                        system_message_answer(hdr,SP_OK,callback_status);
                       }
                     }else {//body error
                       sd_unlock_buffer();
-                      answer(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
+                      system_message_answer(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
                     }
                   }//sd_lock_buffer
 
                 }else
-                  skip_and_aswer(hdr,SP_WRONGSIZE,hdr->size);
+                  skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].rx_data_size);
 
               }//CMD set
             }else
@@ -368,9 +377,9 @@ int serial_protocol_get_cmd_async(uint8_t cmd){
     sd_header_t  *hdr = &hdr1;
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,0); //remove confirm bit, the answer is our confirm
     hdr->cmd = SD_CMD_CREATE_GET(cmd);//GET
-    hdr->size = SD_CMDS[cmd].tx_data_size;
+    hdr->size = SD_CMDS[cmd].rx_data_size;
     hdr->invchksumm = 0;
-    if( (hdr->size != 0 && build_and_send_package(hdr, 0, NULL) == hdr->size) || (hdr->size == 0 && build_and_send_package(hdr, 0, NULL) == (SD_HEADER_SIZE+1)) )
+    if( (hdr->size != 0 && build_and_send_package(hdr, hdr->size, NULL) == hdr->size) || (hdr->size == 0 && build_and_send_package(hdr, 0, NULL) == (SD_HEADER_SIZE+1)) )
         return SD_SEQ_MASK(hdr->sequence);//OK
     else
         return -1;//ERROR
@@ -408,7 +417,7 @@ int32_t serial_protocol_set_cmd_sync(uint8_t cmd, uint8_t confirm){
 }
 
 int32_t serial_protocol_get_cmds_version(void){
-    int32_t version_checksumm = serial_protocol_get_cmd_sync(0);
+    int32_t version_checksumm = serial_protocol_get_cmd_sync(0);//special system message
 
     if(version_checksumm < 0) return -1;//error, timeout
 

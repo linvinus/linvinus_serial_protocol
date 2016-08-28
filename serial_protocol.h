@@ -59,7 +59,7 @@ extern uint16_t SD_CMDS_COUNT;
 
 typedef enum {//mask  0b01110000
   SP_OK             = 0b00000000,
-  SP_UNKNOWNCMD    = 0b00010000,
+  SP_UNKNOWNCMD     = 0b00010000,
   SP_WRONGCHECKSUMM = 0b00100000,
   SP_WRONGSIZE      = 0b00110000,
   SP_VERSION        = 0b01000000
