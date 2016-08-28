@@ -17,7 +17,7 @@ For easy communications between controllers over UART or SPI(not implemented yet
 
 minimal packet size is 6 bytes including 2bytes for user payload data (see fast message section)
 
-Protocol is bidirectionall, host or controller may send any message in any time,
+Protocol is bidirectionall, host or controller may send any message at any time,
 
 protocol message contain header + body, max body size is limited to 246 bytes.
 
