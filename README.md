@@ -88,8 +88,10 @@ where `RobotCFG_t` is structure witch will be used for `serial_protocol_set_cmd_
 
 include this file on host and on controller side.
 
-Now you can fill structure on the host side, then send it to sontroller with command `serial_protocol_set_cmd_sync(1,1);`
+Now you can fill structure on the host side, then send it to controller with command `serial_protocol_set_cmd_sync(1,1);`
 
 on controller side this structure will automatically updated.
 
-after `serial_protocol_get_cmd_sync` structure will be filled with from remote side.
+after command `serial_protocol_get_cmd_sync(1)` structure will be filled with data from remote side.
+
+postfix `_sync` means wait for operation complete or timeout (500ms by default)
