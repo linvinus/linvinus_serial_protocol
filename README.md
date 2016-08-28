@@ -6,6 +6,7 @@ Simple, multi platform binary protocol with low overhead and delivery guarantee.
 
 
 Simple, multi platform binary protocol with very low overhead and delivery guarantee.
+
 For easy communications between controllers over UART or SPI(not implemented yet)
 
  __Overhead:__
