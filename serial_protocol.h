@@ -34,11 +34,11 @@
 #define SD_CMD_CREATE_GET(cmd) ( ((uint8_t)(cmd)) | ((uint8_t)0x80)  )
 #define SD_CMD_CREATE_SET(cmd) ( ((uint8_t)(cmd)) & ((uint8_t)~0x80) )
 
-#define SD_RET_OK 0
-#define SD_RET_ERR1                 SD_RET_OK-1 /* trivial error */
-#define SD_RET_LOCK_ERR             SD_RET_OK-2 /* LOCK error */
-#define SD_RET_PROTOCOL_ERR         SD_RET_OK-3 /* PROTOCOL error */
-#define SD_RET_TIME_ERR         SD_RET_OK-4 /* TIME error */
+#define SD_RET_OK                   (0)
+#define SD_RET_ERR1                 (SD_RET_OK-1) /* trivial error */
+#define SD_RET_LOCK_ERR             (SD_RET_OK-2) /* LOCK error */
+#define SD_RET_PROTOCOL_ERR         (SD_RET_OK-3) /* PROTOCOL error */
+#define SD_RET_TIME_ERR             (SD_RET_OK-4) /* TIME error */
 
 #include "serial_protocol_lld.h"
 
