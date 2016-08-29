@@ -31,79 +31,11 @@
 #define SD_MAX_PACKET (SD_BUFFER_LENGTH - 1 - SD_HEADER_SIZE - COBSBUF_RAW_DATA_OFFCET) /*246 bytes*/
 
 #define MIN(A,B) ( (A) > (B) ? (B) : (A) )
-static uint8_t last_sequence;//4bits counter
 
+static uint8_t last_sequence;//4bits counter
 static uint8_t * const cobs_buf_p = (uint8_t *)&cobs_buf1;
 
-/* Quick description
- *
- * Simple, multi platform binary protocol with very low overhead and delivery guarantee.
- * For easy communications between controllers over UART or SPI(not implemented yet)
- *
- * Overhead:
- *  1 start byte
- *  4 bytes header,
- *  1 additional byte for cobs encoding
- *  total: 6bytes
- *
- * minimal packet size is 6 bytes including 2bytes for user payload data (see fast message section)
- *
- * Protocol is bidirectionall, host or controller may send any message in any time,
- * protocol message contain header + body, max body size is limited to 246 bytes.
- * body may contain any byte
- *
- * 4bits counter, command ID and body size is used for commands identification and synchronization
- * Body content is protected with checksum, messages with wrong checksum is rejected with error notification message.
- * GET commands is used to receive data from remote side
- * SET commands is used to set data on remote side, may be with confirmation or without confirmation
- * For confirmation or error notification purpose, special "system messages" are used.
- *
- * To simplify user protocol, special array is used to store all commands (SD_CMDS[]),
- * this array must be the same on both sides of connection.
- *
- * */
-
-/* Packet format */
-
-/* REGULAR MESSAGE [0]cobsencoded([sequence][cmd][size][invchksumm][body0][body1][body2]...[bodyNsize])
- * [0] - COBS_SYMBOL
- * header 4 bytes
- * body >=0 bytes
- * */
-typedef struct{
- uint8_t sequence;  // 0-3bits = sequence,4-6bits - not used, 7th bit (0x80) indicate that comfirm  is requested
- uint8_t cmd;       // 0-6bits = cmd, 7th bit indicate GET (0x80) or SET command
- uint8_t size;      // body size
- uint8_t invchksumm;// body inverse check summ
-}sd_header_t, *psd_header_t;
-
-/*  SYSTEM MESSAGE FORMAT [0]cobsencoded([sequence][cmd][size][invchksumm])
- *  [0] - COBS_SYMBOL
- *  system messages 4 bytes, never have a body
- *
- * typedef struct{
- *  uint8_t sequence;  // 0-3bits = sequence,4-6bits - system message reason
- *  uint8_t cmd;       // always == SP_SYSTEM_MESSAGE
- *  uint8_t size;      // cmd for which this system mssage generated, without 7th bit
- *  uint8_t invchksumm;// status in system message (any arbitrary value)
- * }sd_header_t, *psd_header_t;
- *
- * system message reason description and invchksumm meaning
- *  SP_OK - delivery confirmation,
- *          invchksumm for set CMD only, contain uint8_t rxcallback answer if cmd supports callback
- *
- *  SP_UNKNOWNCMD - unknown cmd
- *          invchksumm contain body size
- *
- *  SP_WRONGCHECKSUMM - wrong checksumm
- *          invchksumm contain original invchksumm
- *
- *  SP_WRONGSIZE - wrong body size
- *          invchksumm contain original body size
- *
- *  SP_VERSION - report checksum
- *          invchksumm contain checksum of SD_CMDS array
- * */
+SD_FAST_MESSAGE_CALLBACK_t fast_message_fn = NULL;
 
 typedef enum {
   SP_SYSTEM_MESSAGE = 0,
@@ -332,20 +264,29 @@ static inline void _sd_main_loop_iterate(void){
 
       if( cobs_start_receiving_and_decode(SD_HEADER_SIZE,header) == SD_HEADER_SIZE ){
         //got header
-        if(hdr->cmd == SD_CMD_CREATE_GET(SP_SYSTEM_MESSAGE) ){//special case,"get version"
-          system_message_answer(hdr,SP_VERSION,calculate_version_checksumm());
-        }else if(hdr->cmd == SP_SYSTEM_MESSAGE){//received protocol information
+        
+        if(hdr->cmd == SP_SYSTEM_MESSAGE){                                                           /* received protocol system message */
             sd_broadcast_system_message(hdr->sequence, hdr->size, hdr->invchksumm,500);
             sd_protocol_inform(hdr->sequence, hdr->size, hdr->invchksumm);
-        }else{
+        }else if(fast_message_fn != NULL && fast_message_fn(hdr)){                                   /* check for fast message */
+          if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
+            //send ak
+            system_message_answer(hdr,SP_OK,hdr->invchksumm);
+          }
+        }else if(hdr->cmd == SD_CMD_CREATE_GET(SP_SYSTEM_MESSAGE) ){                                  /* special case,"get version" */
+          system_message_answer(hdr,SP_VERSION,calculate_version_checksumm());
+        }
+        else                                                                                          /* regular message */
+        {
           last_sequence = SD_SEQ_MASK(hdr->sequence);//used for next outgoing message
 
-          if(hdr->size < SD_MAX_PACKET ){
-            //hdr->cmd == SP_SYSTEM_MESSAGE
-            if( SD_CMD_INDEX_MASK(hdr->cmd) < SD_CMDS_COUNT ){//known CMD
+          if(hdr->size < SD_MAX_PACKET ){//size is ok
 
-              if(SD_CMD_ISGET(hdr->cmd)){
-                //get CMD
+            if( SD_CMD_INDEX_MASK(hdr->cmd) < SD_CMDS_COUNT ){                                        /* known CMD */
+
+              if(SD_CMD_ISGET(hdr->cmd))                                                              /* CMD type GET */
+              {
+                
                 hdr->cmd = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit
 
                 if(SD_CMDS[hdr->cmd].tx_data_size != 0 ){//fixed size format
@@ -359,15 +300,16 @@ static inline void _sd_main_loop_iterate(void){
                   }else{
                     skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);
                   }
-                }else{//variable size format, or wrong configuration
-                  //call tx callback to fill variable data
-                  if(SD_CMDS[hdr->cmd].tx_callback != NULL){
+                }else{                                                                                 /* CMD GET variable size format, or wrong configuration */
+                  if(SD_CMDS[hdr->cmd].tx_callback != NULL){//call tx callback to fill variable data
                     call_callback_build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_callback);
                   }else{
                     skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);//report our prefered size
                   }
                 }//end variable size format
-              }else{//set CMD
+              }
+              else                                                                                     /* CMD type SET */
+              {
                 if( SD_CMDS[hdr->cmd].rx_data_size == hdr->size ){//fixed size format
 
                   //receive body in temporary buffer
@@ -405,7 +347,7 @@ static inline void _sd_main_loop_iterate(void){
                     }
                   }//sd_lock_buffer
 
-                }else{//variable size format, or wrong configuration
+                }else{                                                                                  /* CMD SET variable size format, or wrong configuration */
                   //call tx callback to fill variable data
                   if(SD_CMDS[hdr->cmd].rx_callback != NULL){
                     //receive body in temporary buffer
@@ -502,3 +444,29 @@ int32_t serial_protocol_get_cmds_version(void){
 
     return (version_checksumm & 0xFF);
   }
+
+void sd_set_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn){
+  fast_message_fn = fn;
+}
+
+/* send fast message
+ * if confirm != 0
+ *  return 0 on successful delivery
+ * else
+ *  return sequence index
+ * */
+int serial_protocol_fast_message(uint8_t cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm){
+    sd_header_t hdr1;
+    sd_header_t  *hdr = &hdr1;
+    hdr->sequence = SD_SEQ_CREATE(++last_sequence,confirm);
+    hdr->cmd = cmd;
+    hdr->size = dataA;
+    hdr->invchksumm = dataB;
+    if( build_and_send_package(hdr, 0, NULL) == (SD_HEADER_SIZE+1) ){
+      if(confirm){
+        return (sd_wait_system_message(hdr->sequence,hdr->cmd)< 0 ? -2 : 0);//-2 - timeout, 0 - successful
+      }else
+        return  SD_SEQ_MASK(hdr->sequence);//OK
+    }else
+        return -1;//ERROR
+}

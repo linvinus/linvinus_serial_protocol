@@ -37,6 +37,80 @@
 
 #include "serial_protocol_lld.h"
 
+/* Quick description
+ *
+ * Simple, multi platform binary protocol with very low overhead and delivery guarantee.
+ * For easy communications between controllers over UART or SPI(not implemented yet)
+ *
+ * Overhead:
+ *  1 start byte
+ *  4 bytes header,
+ *  1 additional byte for cobs encoding
+ *  total: 6bytes
+ *
+ * minimal packet size is 6 bytes including 2bytes for user payload data (see fast message section)
+ *
+ * Protocol is bidirectionall, host or controller may send any message in any time,
+ * protocol message contain header + body, max body size is limited to 246 bytes.
+ * body may contain any byte
+ *
+ * 4bits counter, command ID and body size is used for commands identification and synchronization
+ * Body content is protected with checksum, messages with wrong checksum is rejected with error notification message.
+ * GET commands is used to receive data from remote side
+ * SET commands is used to set data on remote side, may be with confirmation or without confirmation
+ * For confirmation or error notification purpose, special "system messages" are used.
+ *
+ * To simplify user protocol, special array is used to store all commands (SD_CMDS[]),
+ * this array must be the same on both sides of connection.
+ *
+ * */
+
+/* Packet format */
+
+/* REGULAR MESSAGE [0]cobsencoded([sequence][cmd][size][invchksumm][body0][body1][body2]...[bodyNsize])
+ * [0] - COBS_SYMBOL
+ * header 4 bytes
+ * body >=0 bytes
+ * */
+typedef struct{
+ uint8_t sequence;  // 0-3bits = sequence,4-6bits - not used, 7th bit (0x80) indicate that comfirm  is requested
+ uint8_t cmd;       // 0-6bits = cmd, 7th bit indicate GET (0x80) or SET command
+ uint8_t size;      // body size
+ uint8_t invchksumm;// body inverse check summ
+}sd_header_t, *psd_header_t;
+
+/*  SYSTEM MESSAGE FORMAT [0]cobsencoded([sequence][cmd][size][invchksumm])
+ *  [0] - COBS_SYMBOL
+ *  system messages 4 bytes, never have a body
+ *
+ * typedef struct{
+ *  uint8_t sequence;  // 0-3bits = sequence,4-6bits - system message reason
+ *  uint8_t cmd;       // always == SP_SYSTEM_MESSAGE
+ *  uint8_t size;      // cmd for which this system mssage generated, without 7th bit
+ *  uint8_t invchksumm;// status in system message (any arbitrary value)
+ * }sd_header_t, *psd_header_t;
+ *
+ * system message reason description and invchksumm meaning
+ *  SP_OK - delivery confirmation,
+ *          invchksumm for set CMD only, contain uint8_t rxcallback answer if cmd supports callback
+ *
+ *  SP_UNKNOWNCMD - unknown cmd
+ *          invchksumm contain body size
+ *
+ *  SP_WRONGCHECKSUMM - wrong checksumm
+ *          invchksumm contain original invchksumm
+ *
+ *  SP_WRONGSIZE - wrong body size
+ *          invchksumm contain original body size
+ *
+ *  SP_VERSION - report checksum
+ *          invchksumm contain checksum of SD_CMDS array
+ * */
+
+ 
+
+typedef uint8_t (*SD_FAST_MESSAGE_CALLBACK_t)(sd_header_t *hdr);
+
 typedef uint8_t (*SD_CALLBACK)(uint16_t data_size,uint8_t *data,void *arg);
 
 typedef struct SerialProtocolCmd_t SerialProtocolCmd_t;
@@ -76,6 +150,8 @@ extern "C" {
   int32_t serial_protocol_set_cmd_sync(uint8_t cmd, uint8_t confirm);
   uint8_t calculate_version_checksumm(void);
   int32_t serial_protocol_get_cmds_version(void);
+  void sd_set_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
+  int serial_protocol_fast_message(uint8_t cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm);
 
 #ifdef __cplusplus
 }
