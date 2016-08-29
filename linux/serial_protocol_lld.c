@@ -70,7 +70,7 @@ static int set_interface_attribs (int fd, int speed, int parity){
         if (tcgetattr (fd, &tty) != 0)
         {
                 printf ("error %d from tcgetattr", errno);
-                return -1;
+                return SD_RET_ERR1;
         }
 
         cfsetospeed (&tty, speed);
@@ -101,9 +101,9 @@ static int set_interface_attribs (int fd, int speed, int parity){
         if (tcsetattr (fd, TCSANOW, &tty) != 0)
         {
                 printf ("error %d from tcsetattr", errno);
-                return -1;
+                return SD_RET_ERR1;
         }
-        return 0;
+        return SD_RET_OK;
 }
 
 static void set_blocking (int fd, int should_block) {
@@ -112,7 +112,7 @@ static void set_blocking (int fd, int should_block) {
         if (tcgetattr (fd, &tty) != 0)
         {
                 printf ("error %d from tggetattr", errno);
-                return;
+                return;//SD_RET_ERR1
         }
 
         tty.c_cc[VMIN]  = should_block ? 1 : 0;
@@ -142,7 +142,7 @@ static void* serial_protocol_thread_fn(void *arg){
     serial_protocol_main_loop_iterate();
     //~ usleep (1 * 1000); timeout in sd_read_byte is enough
   }
-  return 0;
+  return SD_RET_OK;
 }
 
 
@@ -165,10 +165,10 @@ int sd_get_timeout(int time_ms){
   rv = select(TTY_fd + 1, &set, NULL, NULL, &timeout);
   if(rv == -1){
     DEBUG_SERIAL("select error\r\n"); /* an error accured */
-    return -1;
+    return SD_RET_ERR1;
   }else if(rv == 0){
     DEBUG_SERIAL("sd_read_byte timeout \r\n"); /* a timeout occured */
-    return -1;
+    return SD_RET_ERR1;
   }else{
      /* there was data to read */
     if(read( TTY_fd, &byte, 1 ) >= 0){
@@ -176,7 +176,7 @@ int sd_get_timeout(int time_ms){
       return byte;
     }else{
       DEBUG_SERIAL("r=timeout ");
-      return -1;
+      return SD_RET_ERR1;
     }
   }
 }
@@ -201,15 +201,15 @@ int sd_put_timeout(char b,int time_ms){
   rv = select(TTY_fd + 1, NULL, &set, NULL, &timeout);
   if(rv == -1){
     DEBUG_SERIAL("select error\r\n"); /* an error accured */
-    return -1;
+    return SD_RET_ERR1;
   }else if(rv == 0){
     DEBUG_SERIAL("sd_put_timeout timeout \r\n"); /* a timeout occured */
-    return -1;
+    return SD_RET_ERR1;
   }else{
      /* there was data to read */
      int e = write(TTY_fd, &b, 1 );
      //~ tcflush(TTY_fd, TCSADRAIN);
-    return ( e == 1 ?  0 : -1);
+    return ( e == 1 ?  SD_RET_OK : SD_RET_ERR1);
   }
 }
 
@@ -231,10 +231,10 @@ int sd_write_timeout(uint8_t *buff,int size,int time_ms){
   rv = select(TTY_fd + 1, NULL, &set, NULL, &timeout);
   if(rv == -1){
     DEBUG_SERIAL("select error\r\n"); /* an error accured */
-    return -1;
+    return SD_RET_ERR1;
   }else if(rv == 0){
     DEBUG_SERIAL("sd_write_timeout timeout \r\n"); /* a timeout occured */
-    return -1;
+    return SD_RET_ERR1;
   }else{
 
       //return
@@ -268,7 +268,7 @@ int serial_protocol_thread_init(char *portname,int portspeed){
   if (TTY_fd < 0)
   {
           printf ("error %d opening %s: %s", errno, portname, strerror (errno));
-          return -1;
+          return SD_RET_ERR1;
   }
 
   set_interface_attribs (TTY_fd, portspeed, 0);  // set speed to 115,200 bps, 8n1 (no parity)
@@ -281,7 +281,7 @@ int serial_protocol_thread_init(char *portname,int portspeed){
     fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
     exit(EXIT_FAILURE);
   }
-  return 0;//ok
+  return SD_RET_OK;//ok
 }
 
 int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd){
@@ -318,17 +318,17 @@ int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd){
           continue;//not timeout yet, wait a bit more
         }else{
           rc = pthread_mutex_unlock(&mutex);
-          return -2;//timeout, wrong cmd or sequence
+          return SD_RET_TIME_ERR;//timeout, wrong cmd or sequence
         }
       }
     }else{
       rc = pthread_mutex_unlock(&mutex);
-      return -3;//timeout
+      return SD_RET_TIME_ERR;//timeout
     }
   }while(1);
 
   rc = pthread_mutex_unlock(&mutex);
-  return -2;//timeout anyway
+  return SD_RET_TIME_ERR;//timeout anyway
 }
 
 

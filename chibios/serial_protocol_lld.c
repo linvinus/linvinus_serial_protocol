@@ -34,14 +34,14 @@ inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd){
   do{
     msg_t msg = chThdEnqueueTimeoutS(&sd_protocol_q_waiting,MS2ST(500) - elapsed);
     if(msg == MSG_TIMEOUT){
-      return -2;//timeout
+      return SD_RET_TIME_ERR;//timeout
     }else if( SD_SEQ_MASK(msg >> 16) == SD_SEQ_MASK(sequence) &&
               SD_CMD_INDEX_MASK(msg >> 8) == SD_CMD_INDEX_MASK(cmd) ){
           //int32_t system_message = msg ;//& (0x7F << 16 | 0x7F <<8 | 0xFF);//it's oksd_wait_system_message, because usfulldata only in 0x7f7fff
           return (msg & 0xFFFFFF);//Delivered successful
     }
   }while( (elapsed = chVTTimeElapsedSinceX(start)) < MS2ST(500) );//osalOsIsTimeWithinX ?
-  return -2;//timeout anyway
+  return SD_RET_TIME_ERR;//timeout anyway
 }
 
 inline void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
@@ -91,17 +91,17 @@ int sd_lld_sprintf(char *str, size_t size, const char *fmt,va_list ap){
     size_wo_nul = size - 1;
   else
     size_wo_nul = 0;
-      
+
   /* Memory stream object to be used as a string writer, reserving one
      byte for the final zero.*/
   msObjectInit(&ms, (uint8_t *)str, size_wo_nul, 0);
-      
+
   /* Performing the print operation using the common code.*/
   chp = (BaseSequentialStream *)(void *)&ms;
   //~ va_start(ap, fmt);
   retval = chvprintf(chp, fmt, ap);
   //~ va_end(ap);
- 
+
   /* Terminate with a zero, unless size==0.*/
   if (ms.eos < size)
       str[ms.eos] = 0;

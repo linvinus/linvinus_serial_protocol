@@ -82,7 +82,7 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
         raw[3] = (uint8_t)~raw_body_checksumm;//invchksumm
       }else{
         sd_unlock_buffer();
-        return -1; //protocol error, bodysize >0 but body == NULL
+        return SD_RET_PROTOCOL_ERR; //protocol error, bodysize >0 but body == NULL
       }
     }else{//no body
       raw[2] = hdrp[2];//in size, some usefull data
@@ -96,13 +96,13 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
     if( sd_put_timeout(COBS_SYMBOL,100) == 0 ){//start of packet
       size_t rc = sd_write_timeout(cobs_buf_p,pktsize,500);//send encoded data
       sd_unlock_buffer();
-      return (rc == pktsize ? (int16_t)rc : -1 ); //-1 //protocol error
+      return (rc == pktsize ? (int16_t)rc : SD_RET_PROTOCOL_ERR ); //-1 //protocol error
     }else{
       sd_unlock_buffer();
-      return -1; //protocol error
+      return SD_RET_PROTOCOL_ERR; //protocol error
     }
   }
-    else return -1; //LOCK error
+    else return SD_RET_LOCK_ERR; //LOCK error
 
 }//build_and_send_package
 
@@ -123,7 +123,7 @@ static int16_t call_callback_build_and_send_package(sd_header_t *hdr,SD_CALLBACK
     }else{
       sd_sysunlock();
       sd_unlock_buffer();
-      return -1; //callback didn't return data
+      return SD_RET_PROTOCOL_ERR; //callback didn't return data
     }
     sd_sysunlock();
 
@@ -140,13 +140,13 @@ static int16_t call_callback_build_and_send_package(sd_header_t *hdr,SD_CALLBACK
     if( sd_put_timeout(COBS_SYMBOL,100) == 0 ){//start of packet
       size_t rc = sd_write_timeout(cobs_buf_p,pktsize,500);//send encoded data
       sd_unlock_buffer();
-      return (rc == pktsize ? (int16_t)rc : -1 ); //-1 //protocol error
+      return (rc == pktsize ? (int16_t)rc : SD_RET_PROTOCOL_ERR ); //-1 //protocol error
     }else{
       sd_unlock_buffer();
-      return -1; //protocol error
+      return SD_RET_PROTOCOL_ERR; //protocol error
     }
   }
-    else return -1; //LOCK error
+    else return SD_RET_LOCK_ERR; //LOCK error
 
 }//build_and_send_package
 
@@ -165,7 +165,7 @@ static size_t cobs_receive_decode(size_t pktsize, uint8_t* destination,uint8_t i
         cobs_state_rx.code = sd_get_timeout(100);
 
         if(cobs_state_rx.code < 0 || cobs_state_rx.code == COBS_SYMBOL /*|| ( (cobs_state_rx.read_index + cobs_state_rx.code) > end && cobs_state_rx.code != 1)*/)
-            return 0;//error
+            return SD_RET_PROTOCOL_ERR;//error
 
         cobs_state_rx.n = cobs_state_rx.code;
       }
@@ -176,7 +176,7 @@ static size_t cobs_receive_decode(size_t pktsize, uint8_t* destination,uint8_t i
           c = sd_get_timeout(100);
 
           if(c < 0 || c == COBS_SYMBOL)//COBS_SYMBOL is not allowed there!
-            return 0;//error
+            return SD_RET_PROTOCOL_ERR;//error
 
           cobs_state_rx.n--;
           chksumm += *(dst++) = c;
@@ -195,7 +195,7 @@ static size_t cobs_receive_decode(size_t pktsize, uint8_t* destination,uint8_t i
 
   //warning: comparison of promoted ~unsigned with unsigned https://gcc.gnu.org/bugzilla/show_bug.cgi?id=38341
   if( invchksumm !=0 && ((uint8_t)~chksumm) != invchksumm)
-    return 0;//error, broken package, checksum mismatch
+    return SD_RET_PROTOCOL_ERR;//error, broken package, checksum mismatch
 
   return (dst - destination);
 }//cobs_receive_decode
@@ -262,7 +262,7 @@ static inline void _sd_main_loop_iterate(void){
 
       if( cobs_start_receiving_and_decode(SD_HEADER_SIZE,header) == SD_HEADER_SIZE ){
         //got header
-        
+
         if(hdr->cmd == SP_SYSTEM_MESSAGE){                                                           /* received protocol system message */
             sd_broadcast_system_message(hdr->sequence, hdr->size, hdr->invchksumm,500);
             if(protocol_inform_fn != NULL)
@@ -285,7 +285,7 @@ static inline void _sd_main_loop_iterate(void){
 
               if(SD_CMD_ISGET(hdr->cmd))                                                              /* CMD type GET */
               {
-                
+
                 hdr->cmd = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit
 
                 if(SD_CMDS[hdr->cmd].tx_data_size != 0 ){//fixed size format
@@ -402,15 +402,15 @@ int serial_protocol_get_cmd_async(uint8_t cmd){
     if( (hdr->size != 0 && build_and_send_package(hdr, hdr->size, NULL) == hdr->size) || (hdr->size == 0 && build_and_send_package(hdr, 0, NULL) == (SD_HEADER_SIZE+1)) )
         return SD_SEQ_MASK(hdr->sequence);//OK
     else
-        return -1;//ERROR
+        return SD_RET_PROTOCOL_ERR;//ERROR
   }else
-    return -1;//ERROR
+    return SD_RET_PROTOCOL_ERR;//ERROR
 }
 
 int32_t serial_protocol_get_cmd_sync(uint8_t cmd){
   int sequence = serial_protocol_get_cmd_async(cmd);
   if(sequence < 0)
-    return -1;//error
+    return SD_RET_PROTOCOL_ERR;//error
   else
     return sd_wait_system_message(sequence,cmd);//return sd_wait_system_message state, < 0 if error
 }
@@ -425,21 +425,23 @@ int32_t serial_protocol_set_cmd_sync(uint8_t cmd, uint8_t confirm){
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,confirm);
     hdr->cmd = SD_CMD_CREATE_SET(cmd);//SET
 
-    if(build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_data_size,SD_CMDS[hdr->cmd].tx_data)<0)
-      return -1;//ERROR
+    int16_t ret = build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_data_size,SD_CMDS[hdr->cmd].tx_data);
+    if(ret < 0)
+      return ret;//ERROR
 
     if(confirm){
-      return (sd_wait_system_message(hdr->sequence,hdr->cmd)< 0 ? -2 : 0);//-2 - timeout, 0 - successful
+      ret = sd_wait_system_message(hdr->sequence,hdr->cmd);
+      return (ret< 0 ? ret : SD_RET_OK);//-2 - timeout, 0 - successful
     }
-    return 0;//OK
+    return SD_RET_OK;//OK
   }else
-    return -1;//ERROR
+    return SD_RET_ERR1;//ERROR
 }
 
 int32_t serial_protocol_get_cmds_version(void){
     int32_t version_checksumm = serial_protocol_get_cmd_sync(0);//special system message
 
-    if(version_checksumm < 0) return -1;//error, timeout
+    if(version_checksumm < 0) return SD_RET_PROTOCOL_ERR;//error, timeout
 
     return (version_checksumm & 0xFF);
   }
@@ -466,11 +468,11 @@ int serial_protocol_fast_message(uint8_t cmd, uint8_t dataA, uint8_t dataB, uint
     hdr->invchksumm = dataB;
     if( build_and_send_package(hdr, 0, NULL) == (SD_HEADER_SIZE+1) ){
       if(confirm){
-        return (sd_wait_system_message(hdr->sequence,hdr->cmd)< 0 ? -2 : 0);//-2 - timeout, 0 - successful
+        return (sd_wait_system_message(hdr->sequence,hdr->cmd)< 0 ? SD_RET_LOCK_ERR : SD_RET_OK);//-2 - timeout, 0 - successful
       }else
         return  SD_SEQ_MASK(hdr->sequence);//OK
     }else
-        return -1;//ERROR
+        return SD_RET_PROTOCOL_ERR;//ERROR
 }
 
 
@@ -489,7 +491,7 @@ int32_t sd_printf(uint8_t cmd,const char *fmt,...){
   uint16_t pktsize=0;
   uint8_t raw_body_checksumm=0,i=0;
   va_list ap;
-  
+
   uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET;//after cobs_encode data will be starting from [0]
 
   if( sd_lock_buffer(500)){//try to lock with timeout
@@ -497,7 +499,7 @@ int32_t sd_printf(uint8_t cmd,const char *fmt,...){
     uint8_t *raw_body = raw + SD_HEADER_SIZE;
     uint8_t bodysize = SD_MAX_PACKET;//max packet size
 
-    
+
 
     va_start(ap, fmt);
     bodysize = sd_lld_sprintf(raw_body, bodysize,fmt,ap);
@@ -519,12 +521,12 @@ int32_t sd_printf(uint8_t cmd,const char *fmt,...){
     if( sd_put_timeout(COBS_SYMBOL,100) == 0 ){//start of packet
       size_t rc = sd_write_timeout(cobs_buf_p,pktsize,500);//send encoded data
       sd_unlock_buffer();
-      return (rc == pktsize ? (int16_t)rc : -1 ); //-1 //protocol error
+      return (rc == pktsize ? (int16_t)rc : SD_RET_PROTOCOL_ERR ); //-1 //protocol error
     }else{
       sd_unlock_buffer();
-      return -1; //protocol error
+      return SD_RET_PROTOCOL_ERR; //protocol error
     }
   }
-    else return -1; //LOCK error
+    else return SD_RET_LOCK_ERR; //LOCK error
 
 }
