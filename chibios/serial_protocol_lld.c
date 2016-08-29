@@ -20,6 +20,8 @@
 #include "ch.h"
 #include "hal.h"
 #include "serial_protocol.h"
+#include "memstreams.h"
+#include <stdarg.h> /*va_list for sd_lld_sprintf*/
 
 static threads_queue_t sd_protocol_q_waiting;
 static BSEMAPHORE_DECL(SD_BUFF_SEM,FALSE);
@@ -43,7 +45,7 @@ inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd){
 }
 
 inline void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
-  (void*)timeout_ms;
+  (void)timeout_ms;
   chThdDequeueAllI(&sd_protocol_q_waiting,((uint32_t)sequence<<16 |(uint32_t)cmd<<8 |state));
 }
 
@@ -72,4 +74,38 @@ static THD_FUNCTION(ThreadSerialProtocol, arg) {
 void serial_protocol_thread_init(void){
   chThdQueueObjectInit(&sd_protocol_q_waiting);
   chThdCreateStatic(waThreadSerialProtocol, sizeof(waThreadSerialProtocol), NORMALPRIO+1, ThreadSerialProtocol, NULL);
+}
+
+int sd_lld_sprintf(char *str, size_t size, const char *fmt,va_list ap){
+  /* Require :
+   * $(CHIBIOS)/os/hal/lib/streams/memstreams.c
+   * $(CHIBIOS)/os/hal/lib/streams/chprintf.c
+   * */
+  //~ va_list ap;
+  MemoryStream ms;
+  BaseSequentialStream *chp;
+  size_t size_wo_nul;
+  int retval;
+
+  if (size > 0)
+    size_wo_nul = size - 1;
+  else
+    size_wo_nul = 0;
+      
+  /* Memory stream object to be used as a string writer, reserving one
+     byte for the final zero.*/
+  msObjectInit(&ms, (uint8_t *)str, size_wo_nul, 0);
+      
+  /* Performing the print operation using the common code.*/
+  chp = (BaseSequentialStream *)(void *)&ms;
+  //~ va_start(ap, fmt);
+  retval = chvprintf(chp, fmt, ap);
+  //~ va_end(ap);
+ 
+  /* Terminate with a zero, unless size==0.*/
+  if (ms.eos < size)
+      str[ms.eos] = 0;
+
+  /* Return number of bytes that would have been written.*/
+  return retval;
 }

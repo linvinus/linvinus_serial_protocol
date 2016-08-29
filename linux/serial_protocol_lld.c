@@ -137,7 +137,7 @@ int inputAvailable() {
 }*/
 
 static void* serial_protocol_thread_fn(void *arg){
-  (void *)arg;
+  (void)arg;
   while(1){
     serial_protocol_main_loop_iterate();
     //~ usleep (1 * 1000); timeout in sd_read_byte is enough
@@ -399,4 +399,9 @@ uint16_t sd_unlock_buffer(void){
 
 void sd_protocol_flush(void){
   tcflush(TTY_fd, TCIOFLUSH);
+}
+
+int sd_lld_sprintf(char *str, size_t size, const char *fmt,va_list ap){
+  int retval = vsnprintf(str,size,fmt,ap); /* Return number of bytes that would have been written.*/
+  return retval;  
 }

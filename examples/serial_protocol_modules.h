@@ -5,6 +5,8 @@
 
 #include "serial_protocol.h"
 
+uint8_t sd_printf_callback(uint16_t data_size,uint8_t *data,void *arg);
+
 typedef struct {
   uint32_t A;
   uint32_t B;
@@ -20,6 +22,7 @@ typedef struct SerialProtocolCmd_t SerialProtocolCmd_t;
 SerialProtocolCmd_t SD_CMDS[]={
   {0,NULL,NULL,NULL,0,NULL,NULL,NULL},                              /*SP_SYSTEM_MESSAGE*/
   {sizeof(RobotCFG_t),&RobotCFG,NULL,NULL,sizeof(RobotCFG_t),&RobotCFG,NULL,NULL},        /*SP_CONFIGURATION*/
+  {0,NULL,sd_printf_callback,NULL,0,NULL,NULL,NULL},        /*SP_PRINTF*/
   };
   //
 

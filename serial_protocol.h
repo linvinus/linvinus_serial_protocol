@@ -139,6 +139,11 @@ typedef enum {//mask  0b01110000
   SP_VERSION        = 0b01000000
 }SerialPacketSystemMessageReason_t;
 
+typedef enum {
+  SP_SYSTEM_MESSAGE = 0
+}SerialPacketType_t;
+
+
 #if !defined(_FROM_ASM_)
 #ifdef __cplusplus
 extern "C" {

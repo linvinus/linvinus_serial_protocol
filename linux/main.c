@@ -34,6 +34,11 @@
 
 #include "serial_protocol_modules.h"
 
+uint8_t sd_printf_callback(uint16_t data_size,uint8_t *data,void *arg){
+  //arguments: hdr->size, cobs_buf_p, NULL
+  write(1, data, data_size);//print to std out
+  return 0;//not used
+}
 
 int main(void) {
 
@@ -57,6 +62,7 @@ int main(void) {
     remote_checksumm = serial_protocol_get_cmds_version();
   }
 
+/*
   if( remote_checksumm >= 0){
     int32_t local_checksumm = calculate_version_checksumm();
     if( remote_checksumm == local_checksumm){
@@ -66,7 +72,7 @@ int main(void) {
       exit(EXIT_FAILURE);
     }
   }
-
+*/
   struct timespec   start,end;
 
   while(1){

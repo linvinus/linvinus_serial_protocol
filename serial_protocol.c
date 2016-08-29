@@ -25,6 +25,8 @@
 #include "serial_protocol.h"
 #include "cobs.h"
 
+#include <stdarg.h> /*va_list for sd_printf*/
+
 #define COBSBUF_RAW_DATA_OFFCET 4
 
 #define SD_HEADER_SIZE 4
@@ -36,11 +38,6 @@ static uint8_t last_sequence;//4bits counter
 static uint8_t * const cobs_buf_p = (uint8_t *)&cobs_buf1;
 
 SD_FAST_MESSAGE_CALLBACK_t fast_message_fn = NULL;
-
-typedef enum {
-  SP_SYSTEM_MESSAGE = 0,
-  SP_CONFIGURATION = 1
-}SerialPacketType_t;
 
 /*
  * Because packet whole encoded as header + body,
@@ -469,4 +466,60 @@ int serial_protocol_fast_message(uint8_t cmd, uint8_t dataA, uint8_t dataB, uint
         return  SD_SEQ_MASK(hdr->sequence);//OK
     }else
         return -1;//ERROR
+}
+
+
+/* print into buffer then send packet as "cmd", without confirmation about delivery
+ * cmd index must be the same as on remote side.
+ * describe command on remote as :
+ *     {0,NULL,sd_printf_callback,NULL,0,NULL,NULL,NULL},        //SP_PRINTF
+ *
+ * callback example function:
+ *  uint8_t sd_printf_callback(uint16_t data_size,uint8_t *data,void *arg){
+ *         write(1, data, data_size);//print to std out
+ *  return 0;//not used
+ * }
+ * */
+int32_t sd_printf(uint8_t cmd,const char *fmt,...){
+  uint16_t pktsize=0;
+  uint8_t raw_body_checksumm=0,i=0;
+  va_list ap;
+  
+  uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET;//after cobs_encode data will be starting from [0]
+
+  if( sd_lock_buffer(500)){//try to lock with timeout
+
+    uint8_t *raw_body = raw + SD_HEADER_SIZE;
+    uint8_t bodysize = SD_MAX_PACKET;//max packet size
+
+    
+
+    va_start(ap, fmt);
+    bodysize = sd_lld_sprintf(raw_body, bodysize,fmt,ap);
+    va_end(ap);
+
+    for( i=0; i < bodysize; i++){
+      raw_body_checksumm += raw_body[i];
+    }
+
+    raw[0] = SD_SEQ_CREATE(++last_sequence,0);
+    raw[1] = cmd;
+    raw[2] = bodysize;//size
+    raw[3] = ~(raw_body_checksumm);//invchksumm
+
+    pktsize = bodysize + SD_HEADER_SIZE;//body + header
+
+    pktsize = cobs_encode(raw,pktsize,cobs_buf_p);//move to the left
+
+    if( sd_put_timeout(COBS_SYMBOL,100) == 0 ){//start of packet
+      size_t rc = sd_write_timeout(cobs_buf_p,pktsize,500);//send encoded data
+      sd_unlock_buffer();
+      return (rc == pktsize ? (int16_t)rc : -1 ); //-1 //protocol error
+    }else{
+      sd_unlock_buffer();
+      return -1; //protocol error
+    }
+  }
+    else return -1; //LOCK error
+
 }
