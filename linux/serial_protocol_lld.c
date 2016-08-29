@@ -340,7 +340,7 @@ void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uin
   dt.tv_sec = 0;
   dt.tv_nsec = 1000000*timeout_ms;//ms
 
-  clock_gettime(CLOCK_MONOTONIC, &now);
+  clock_gettime(CLOCK_REALTIME, &now);//CLOCK_MONOTONIC is not supported there :(
 
   timeradd(&dt,&now,&timeout);
 
@@ -358,7 +358,7 @@ uint16_t sd_lock_buffer(uint32_t time_ms){
   dt.tv_sec = 0;
   dt.tv_nsec = 1000000*time_ms;//ms
 
-  clock_gettime(CLOCK_MONOTONIC, &now);
+  clock_gettime(CLOCK_REALTIME, &now);//CLOCK_MONOTONIC is not supported there :(
 
   timeradd(&dt,&now,&timeout);
 
@@ -379,5 +379,5 @@ void sd_protocol_flush(void){
 
 int sd_lld_sprintf(char *str, size_t size, const char *fmt,va_list ap){
   int retval = vsnprintf(str,size,fmt,ap); /* Return number of bytes that would have been written.*/
-  return retval;  
+  return retval;
 }
