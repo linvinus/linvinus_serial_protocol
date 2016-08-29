@@ -112,6 +112,7 @@ typedef struct{
 typedef uint8_t (*SD_FAST_MESSAGE_CALLBACK_t)(sd_header_t *hdr);
 
 typedef uint8_t (*SD_CALLBACK)(uint16_t data_size,uint8_t *data,void *arg);
+typedef uint8_t (*SD_PROTOCOL_INFORM_CALLBACK_t)(uint8_t sequence,uint8_t cmd,uint8_t state);
 
 typedef struct SerialProtocolCmd_t SerialProtocolCmd_t;
 
@@ -155,8 +156,9 @@ extern "C" {
   int32_t serial_protocol_set_cmd_sync(uint8_t cmd, uint8_t confirm);
   uint8_t calculate_version_checksumm(void);
   int32_t serial_protocol_get_cmds_version(void);
-  void sd_set_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
+  void sd_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
   int serial_protocol_fast_message(uint8_t cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm);
+  void sd_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn);
 
 #ifdef __cplusplus
 }

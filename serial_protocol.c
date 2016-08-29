@@ -38,6 +38,7 @@ static uint8_t last_sequence;//4bits counter
 static uint8_t * const cobs_buf_p = (uint8_t *)&cobs_buf1;
 
 SD_FAST_MESSAGE_CALLBACK_t fast_message_fn = NULL;
+SD_PROTOCOL_INFORM_CALLBACK_t protocol_inform_fn = NULL;
 
 /*
  * Because packet whole encoded as header + body,
@@ -264,7 +265,8 @@ static inline void _sd_main_loop_iterate(void){
         
         if(hdr->cmd == SP_SYSTEM_MESSAGE){                                                           /* received protocol system message */
             sd_broadcast_system_message(hdr->sequence, hdr->size, hdr->invchksumm,500);
-            sd_protocol_inform(hdr->sequence, hdr->size, hdr->invchksumm);
+            if(protocol_inform_fn != NULL)
+              protocol_inform_fn(hdr->sequence, hdr->size, hdr->invchksumm);
         }else if(fast_message_fn != NULL && fast_message_fn(hdr)){                                   /* check for fast message */
           if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
             //send ak
@@ -442,8 +444,11 @@ int32_t serial_protocol_get_cmds_version(void){
     return (version_checksumm & 0xFF);
   }
 
-void sd_set_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn){
+void sd_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn){
   fast_message_fn = fn;
+}
+void sd_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn){
+  protocol_inform_fn = fn;
 }
 
 /* send fast message

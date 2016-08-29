@@ -40,15 +40,43 @@ uint8_t sd_printf_callback(uint16_t data_size,uint8_t *data,void *arg){
   return 0;//not used
 }
 
+void sd_protocol_inform_callback(uint8_t sequence,uint8_t cmd,uint8_t state){
+  char *c=NULL;
+  switch( SD_SEQ_SYSMES_MASK(sequence) ){
+    case   SP_OK:
+      //~ c="SP_OK";
+    break;
+    case SP_UNKNOWNCMD:
+      c="SP_UNKNOWNCMD";
+    break;
+    case SP_WRONGCHECKSUMM:
+      c="SP_WRONGCHECKSUMM";
+    case SP_WRONGSIZE:
+      c="SP_WRONGSIZE";
+    break;
+    case SP_VERSION:
+      c="SP_VERSION";
+    break;
+    default:
+      c="Unknown state!";
+  }
+  
+  if(c != NULL)
+    fprintf (stderr,"\r\ngot inform cmd(%d)[%d]=%d %s\r\n",(uint8_t)SD_CMD_INDEX_MASK(cmd),(uint8_t)SD_SEQ_MASK(sequence),(uint8_t)state,c);
+}
+
 int main(void) {
 
+  setbuf(stdout, NULL);// disable buffering entirely
 
   if(serial_protocol_thread_init("/dev/rfcomm1",B115200)){
     printf("serial_protocol_thread_init error\r\n");
     exit(EXIT_FAILURE);
   }
 
-  setbuf(stdout, NULL);// disable buffering entirely
+  sd_register_protocol_inform_func(sd_protocol_inform_callback);
+
+  
 
   //check version on first connect
   int32_t remote_checksumm;

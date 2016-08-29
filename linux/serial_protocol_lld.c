@@ -352,30 +352,6 @@ void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uin
   pthread_mutex_unlock(&mutex);
 }
 
-void sd_protocol_inform(uint8_t sequence,uint8_t cmd,uint8_t state){
-  char *c;
-  switch( SD_SEQ_SYSMES_MASK(sequence) ){
-    case   SP_OK:
-      c="SP_OK";
-    break;
-    case SP_UNKNOWNCMD:
-      c="SP_UNKNOWNCMD";
-    break;
-    case SP_WRONGCHECKSUMM:
-      c="SP_WRONGCHECKSUMM";
-    case SP_WRONGSIZE:
-      c="SP_WRONGSIZE";
-    break;
-    case SP_VERSION:
-      c="SP_VERSION";
-    break;
-    default:
-      c="Unknown state!";
-  }
-
-  DEBUG_PROCOTOL("\r\ngot inform cmd(%d)[%d]=%d %s\r\n",(uint8_t)SD_CMD_INDEX_MASK(cmd),(uint8_t)SD_SEQ_MASK(sequence),(uint8_t)state,c);
-}
-
 uint16_t sd_lock_buffer(uint32_t time_ms){
   int               rc;
   struct timespec   timeout,now,dt;

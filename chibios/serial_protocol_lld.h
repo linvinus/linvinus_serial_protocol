@@ -52,8 +52,6 @@ extern uint8_t cobs_buf1[SD_BUFFER_LENGTH];
       } \
       chSysUnlock();\
 
-//not used
-#define sd_protocol_inform(sequence,cmd,state)
 
 #if !defined(_FROM_ASM_)
 #ifdef __cplusplus
