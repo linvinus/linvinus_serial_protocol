@@ -40,6 +40,10 @@
 #define SD_RET_PROTOCOL_ERR         (SD_RET_OK-3) /* PROTOCOL error */
 #define SD_RET_TIME_ERR             (SD_RET_OK-4) /* TIME error */
 
+#define SD_DEFAULT_TIMEOUT 500 /*in ms*/
+#define SD_SYNC 1
+#define SD_ASYNC 0
+
 #include "serial_protocol_lld.h"
 
 /* Quick description
@@ -115,9 +119,9 @@ typedef struct{
 
 
 typedef uint8_t (*SD_FAST_MESSAGE_CALLBACK_t)(sd_header_t *hdr);
+typedef void (*SD_PROTOCOL_INFORM_CALLBACK_t)(uint8_t sequence,uint8_t cmd,uint8_t state);
 
 typedef uint8_t (*SD_CALLBACK)(uint16_t data_size,uint8_t *data,void *arg);
-typedef uint8_t (*SD_PROTOCOL_INFORM_CALLBACK_t)(uint8_t sequence,uint8_t cmd,uint8_t state);
 
 typedef struct SerialProtocolCmd_t SerialProtocolCmd_t;
 
@@ -145,9 +149,11 @@ typedef enum {//mask  0b01110000
   SP_VERSION        = 0b01000000
 }SerialPacketSystemMessageReason_t;
 
-typedef enum {
-  SP_SYSTEM_MESSAGE = 0
-}SerialPacketType_t;
+#define SP_SYSTEM_MESSAGE  0
+//~ typedef enum {
+  //~ SP_SYSTEM_MESSAGE = 0
+//~ }SerialPacketType_t;
+//~ typedef enum SerialPacketType_t SerialPacketType_t;
 
 
 #if !defined(_FROM_ASM_)
@@ -156,11 +162,15 @@ extern "C" {
 #endif
 
   void serial_protocol_main_loop_iterate(void);
-  int serial_protocol_get_cmd_async(uint8_t cmd);
-  int32_t serial_protocol_get_cmd_sync(uint8_t cmd);
-  int32_t serial_protocol_set_cmd_sync(uint8_t cmd, uint8_t confirm);
+
+  int32_t serial_protocol_receive(uint8_t cmd, uint8_t confirm);
+  int32_t serial_protocol_send(uint8_t cmd, uint8_t confirm);
+  int32_t _serial_protocol_send_with_data(uint8_t cmd, void *data, uint16_t data_size, uint8_t confirm);
+
   uint8_t calculate_version_checksumm(void);
-  int32_t serial_protocol_get_cmds_version(void);
+  int32_t serial_protocol_receive_cmds_version(void);
+  int32_t sd_printf(uint8_t cmd,const char *fmt,...);
+  
   void sd_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
   int serial_protocol_fast_message(uint8_t cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm);
   void sd_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn);

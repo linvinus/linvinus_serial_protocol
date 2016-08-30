@@ -20,6 +20,9 @@
 #ifndef _SERIAL_PROTOCOL_LLD_H_
 #define _SERIAL_PROTOCOL_LLD_H_
 
+#include <stddef.h> /*size_t*/
+#include <stdarg.h> /*va_list for sd_lld_sprintf*/
+
 extern uint8_t cobs_buf1[SD_BUFFER_LENGTH];
 
 #define sd_syslock()
@@ -34,12 +37,14 @@ extern "C" {
   int sd_put_timeout(char b,int time_ms);
   int sd_get_timeout(int time_ms);
   int sd_write_timeout(uint8_t *buff,int size,int time_ms);
-  int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd);
+  int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms);
   void sd_protocol_inform(uint8_t sequence,uint8_t cmd,uint8_t state);
   void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms);
   uint16_t sd_lock_buffer(uint32_t time_ms);
   uint16_t sd_unlock_buffer(void);
   void sd_protocol_flush(void);
+  int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap);
+  void sd_lld_timespec_diff(struct timespec *start, struct timespec *stop, struct timespec *result);
 #ifdef __cplusplus
 }
 #endif

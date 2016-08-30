@@ -36,6 +36,7 @@
 
 uint8_t sd_printf_callback(uint16_t data_size,uint8_t *data,void *arg){
   //arguments: hdr->size, cobs_buf_p, NULL
+  (void)arg;
   write(1, data, data_size);//print to std out
   return 0;//not used
 }
@@ -78,17 +79,16 @@ int main(void) {
 
   
 
-  //check version on first connect
-  int32_t remote_checksumm;
-  remote_checksumm = serial_protocol_get_cmds_version();
-
-
-  while(remote_checksumm < 0){
-    printf("Checking version...\r\n");
+  /* Firstly get version 
+   * checking  connection
+   * */
+  int remote_checksumm;
+  do{
     usleep (1000 * 1000);//1s
+    printf("Checking version...\r\n");
     sd_protocol_flush();
-    remote_checksumm = serial_protocol_get_cmds_version();
-  }
+    remote_checksumm = serial_protocol_receive_cmds_version();
+  }while(remote_checksumm < 0);
 
 /*
   if( remote_checksumm >= 0){
@@ -101,22 +101,38 @@ int main(void) {
     }
   }
 */
-  struct timespec   start,end;
-
+  struct timespec   start,end,dt;
+  int res;
+  
   while(1){
-    //~ printf("\r\n###");
-    //~ if(inputAvailable())
-      //~ serial_protocol_get_cmd(1);
 
-    //~ printf("###\r\n");
-    //~ usleep (500 * 1000);
-    printf("\r\n@@@");
     clock_gettime(CLOCK_MONOTONIC, &start);
-    int res = serial_protocol_set_cmd_sync(1,1);
-    clock_gettime(CLOCK_MONOTONIC, &end);
 
-    printf("@@@ %d s=%d %dms \r\n",res,(int)(end.tv_sec - start.tv_sec), (int)(end.tv_nsec - start.tv_nsec)/1000) ;
-    usleep (500 * 1000);
+    /*
+     * fill RobotCFG struct with data from remote side
+     */
+    //~ printf("<%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
+    res = serial_protocol_receive(SP_CONFIGURATION,SD_SYNC);
+    if(res <0) printf("error: serial_protocol_get_cmd(1,1)\r\n");
+    else{
+      //~ printf(">%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
+      /*
+       * Send RobotCFG struct to remote side,
+       * on remote side, after receiving, special callback function will be called,
+       * witch will update data in RobotCFG,
+       * so, after next serial_protocol_receive we will get updated data
+       */ 
+      res = serial_protocol_send(SP_CONFIGURATION,SD_SYNC);
+      if(res <0) printf("error: serial_protocol_set_cmd(1,1)\r\n");
+      
+    }
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    
+    sd_lld_timespec_diff(&start,&end,&dt);
+    
+    printf("transaction time: %dms \r\n",(int)(dt.tv_nsec/1000000 + dt.tv_sec*1000)) ;
+    
+    //~ usleep (500 * 1000);
     //~ c = getch();
   }
 

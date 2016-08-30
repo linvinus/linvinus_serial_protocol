@@ -284,20 +284,20 @@ int serial_protocol_thread_init(char *portname,int portspeed){
   return SD_RET_OK;//ok
 }
 
-int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd){
+int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms){
   int               rc;
-  struct timespec   timeout,now,dt;
+  struct timespec   timeout,start,dt;
   dt.tv_sec = 0;
-  dt.tv_nsec = 1000000*500;//ms
+  dt.tv_nsec = 1000000*timeout_ms;//ms
 
   //~ pthread_condattr_setclock(&condattr, CLOCK_MONOTONIC);
 
   // pthread_cond_timedwait() uses CLOCK_REALTIME to evaluate its
   // timeout argument.
-  clock_gettime(CLOCK_MONOTONIC, &now);//working even if system time was changed
+  clock_gettime(CLOCK_MONOTONIC, &start);//working even if system time was changed
   //~ clock_gettime(CLOCK_REALTIME, &now);
 
-  timeradd(&dt,&now,&timeout);
+  timeradd(&dt,&start,&timeout);
 
   rc = pthread_mutex_lock(&mutex);
   do{
@@ -313,8 +313,9 @@ int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd){
 
           return system_message;//Delivered successful
       }else{
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        if(now.tv_sec <= timeout.tv_sec  && now.tv_nsec < timeout.tv_nsec){
+        clock_gettime(CLOCK_MONOTONIC, &dt);
+        sd_lld_timespec_diff(&start,&dt,&dt);
+        if(dt.tv_nsec < 1000000*timeout_ms){
           continue;//not timeout yet, wait a bit more
         }else{
           rc = pthread_mutex_unlock(&mutex);
@@ -377,7 +378,21 @@ void sd_protocol_flush(void){
   tcflush(TTY_fd, TCIOFLUSH);
 }
 
-int sd_lld_sprintf(char *str, size_t size, const char *fmt,va_list ap){
-  int retval = vsnprintf(str,size,fmt,ap); /* Return number of bytes that would have been written.*/
+int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap){
+  int retval = vsnprintf((char *)str,size,fmt,ap); /* Return number of bytes that would have been written.*/
   return retval;
+}
+
+void sd_lld_timespec_diff(struct timespec *start, struct timespec *stop,
+                   struct timespec *result)
+{
+    if ((stop->tv_nsec - start->tv_nsec) < 0) {
+        result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+    } else {
+        result->tv_sec = stop->tv_sec - start->tv_sec;
+        result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+    }
+
+    return;
 }

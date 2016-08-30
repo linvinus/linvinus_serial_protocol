@@ -22,17 +22,18 @@
 #include "serial_protocol.h"
 #include "memstreams.h"
 #include <stdarg.h> /*va_list for sd_lld_sprintf*/
+#include "chprintf.h" /*chvprintf*/
 
 static threads_queue_t sd_protocol_q_waiting;
 static BSEMAPHORE_DECL(SD_BUFF_SEM,FALSE);
 
 uint8_t cobs_buf1[SD_BUFFER_LENGTH];
 
-inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd){
+inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms){
   uint32_t start = chVTGetSystemTimeX();
   uint32_t elapsed = 0;
   do{
-    msg_t msg = chThdEnqueueTimeoutS(&sd_protocol_q_waiting,MS2ST(500) - elapsed);
+    msg_t msg = chThdEnqueueTimeoutS(&sd_protocol_q_waiting,MS2ST(timeout_ms) - elapsed);
     if(msg == MSG_TIMEOUT){
       return SD_RET_TIME_ERR;//timeout
     }else if( SD_SEQ_MASK(msg >> 16) == SD_SEQ_MASK(sequence) &&
@@ -40,7 +41,7 @@ inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd){
           //int32_t system_message = msg ;//& (0x7F << 16 | 0x7F <<8 | 0xFF);//it's oksd_wait_system_message, because usfulldata only in 0x7f7fff
           return (msg & 0xFFFFFF);//Delivered successful
     }
-  }while( (elapsed = chVTTimeElapsedSinceX(start)) < MS2ST(500) );//osalOsIsTimeWithinX ?
+  }while( (elapsed = chVTTimeElapsedSinceX(start)) < MS2ST(timeout_ms) );//osalOsIsTimeWithinX ?
   return SD_RET_TIME_ERR;//timeout anyway
 }
 
@@ -76,7 +77,7 @@ void serial_protocol_thread_init(void){
   chThdCreateStatic(waThreadSerialProtocol, sizeof(waThreadSerialProtocol), NORMALPRIO+1, ThreadSerialProtocol, NULL);
 }
 
-int sd_lld_sprintf(char *str, size_t size, const char *fmt,va_list ap){
+int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap){
   /* Require :
    * $(CHIBIOS)/os/hal/lib/streams/memstreams.c
    * $(CHIBIOS)/os/hal/lib/streams/chprintf.c

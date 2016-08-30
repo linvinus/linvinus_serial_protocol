@@ -22,6 +22,7 @@
 
 #include "ch.h"
 #include "hal.h"
+#include <stdarg.h> /*va_list for sd_lld_sprintf*/
 
 extern uint8_t cobs_buf1[SD_BUFFER_LENGTH];
 
@@ -59,10 +60,11 @@ extern "C" {
 #endif
 
   void serial_protocol_thread_init(void);
-  inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd);
+  inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms);
   inline void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms);
   inline uint16_t sd_lock_buffer(uint32_t time_ms);
   inline uint16_t sd_unlock_buffer(void);
+  int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap);
 
 #ifdef __cplusplus
 }
