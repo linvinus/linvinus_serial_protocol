@@ -72,8 +72,8 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
         //copy body to temporary buffer, calculate checksumm
         sd_syslock();
           for( i=0; i < bodysize; i++){
-            raw_body[i] = body[i];
-            raw_body_checksumm += body[i];
+            *(raw_body++) = *(body);
+            raw_body_checksumm += *(body++);
           }
           //~ memccpy(,,bodysize,sizeof(uint8_t));
         sd_sysunlock();
@@ -160,7 +160,7 @@ static size_t cobs_receive_decode(size_t pktsize, uint8_t* destination,uint8_t i
 
   while(dst < end)
   {
-      if(cobs_state_rx.n < 2){ //load new code only if previous was fully parsed (cobs_state_rx.n==1 || cobs_state_rx.n==0)
+      if(cobs_state_rx.n < 1){ //load new code only if previous was fully parsed (cobs_state_rx.n==1 || cobs_state_rx.n==0)
 
         cobs_state_rx.code = sd_get_timeout(100);
 
@@ -317,16 +317,18 @@ static inline void _sd_main_loop_iterate(void){
 
                       //got body
                       uint8_t* rx_data = SD_CMDS[hdr->cmd].rx_data;
+                      uint8_t *raw = cobs_buf_p;
 
                       if(rx_data != NULL){
                         //copy body to destination
                         sd_syslock();
                         uint16_t i;
                         for(i=0; i < hdr->size; i++){
-                          rx_data[i]=cobs_buf_p[i];
+                          *(rx_data++) = *(raw++);
                         }
                         sd_sysunlock();
                         sd_unlock_buffer();
+                        rx_data = SD_CMDS[hdr->cmd].rx_data;//restore pointer
                       }else
                         rx_data = cobs_buf_p;
 
@@ -520,7 +522,7 @@ int32_t sd_printf(uint8_t cmd,const char *fmt,...){
     va_end(ap);
 
     for( i=0; i < bodysize; i++){
-      raw_body_checksumm += raw_body[i];
+      raw_body_checksumm += *(raw_body++);
     }
 
     raw[0] = SD_SEQ_CREATE(++last_sequence,0);
