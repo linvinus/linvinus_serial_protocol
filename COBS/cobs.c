@@ -151,17 +151,41 @@ static size_t cobs_receive_decode(size_t pktsize, uint8_t* destination,uint8_t i
 
 int main(void) {
   int i;
+
+  typedef struct {
+    uint32_t A;
+    uint32_t B;
+    uint32_t C;
+    uint32_t D;
+  }RobotCFG_t;
+  RobotCFG_t cgf;
+  cgf.A=73;
+  cgf.B=73;
+  cgf.C=146;
+  cgf.D=219;
+
   //~ uint8_t data[]={0x45,0x00,0x00,0x2c,0x4c,0x79,0x00,0x00,0x00,0x00,0x00,0x40,0x00,0x00,0x06,0x4f,0x37};
-  uint8_t data[]={0xc, 0x1, 0x10, 0xf8, 0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x2, 0x0, 0x0, 0x0, 0x3, 0x0, 0x0};
-  int newsize=cobs_get_encoded_buffer_size(sizeof(data));
+  //~ uint8_t data[]={0xc, 0x1, 0x10, 0xf8, 0x0, 0x1, 0x0, 0x0, 0x0, 0x1, 0x0, 0x0, 0x0, 0x2, 0x0, 0x0, 0x0, 0x3, 0x0, 0x0};
+  int newsize=cobs_get_encoded_buffer_size(sizeof(RobotCFG_t));
+  newsize+=4;
+  uint8_t data[newsize];
+  uint8_t *cfg = &cgf;
+  data[0]=13;
+  data[1]=1;
+  data[2]=16;
+  data[3]=7;
+  for(i=4; i<newsize; i++){
+    data[i]=*(cfg++);
+  }
   uint8_t dst[newsize];
   uint8_t dst2[newsize];
-  cobs_encode(data,sizeof(data),dst);
+  
+  cobs_encode((uint8_t*)data,sizeof(data),dst);
   //~ int newsize2 = cobs_decode(dst,sizeof(dst),dst2);
   int newsize2 = cobs_receive_decode(4,dst2,0,dst);
-  newsize2 = cobs_receive_decode(16,dst2+4,0,dst+newsize2+1);
-  printf("size of data=%d, size of dst=%d \r\n",sizeof(data),newsize);
-  for(i=0; i<sizeof(data); i++){
+  newsize2 += cobs_receive_decode(16,dst2+4,0,dst+newsize2+1);
+  printf("size of data=%d, size of dst=%d  newsize2=%d\r\n",sizeof(RobotCFG_t),newsize,newsize2);
+  for(i=0; i<sizeof(RobotCFG_t); i++){
     printf("0x%02x ",data[i]);
   }
   printf("\r\n");

@@ -40,6 +40,8 @@
 #define SD_RET_PROTOCOL_ERR         (SD_RET_OK-3) /* PROTOCOL error */
 #define SD_RET_TIME_ERR             (SD_RET_OK-4) /* TIME error */
 
+#define CONVERT_CHKSUMM(summ) ( ((uint8_t)summ) != 0xFF ? (uint8_t)~(summ) : 0xFF )
+
 #define SD_DEFAULT_TIMEOUT 500 /*in ms*/
 #define SD_SYNC 1
 #define SD_ASYNC 0
@@ -165,7 +167,9 @@ extern "C" {
 
   int32_t serial_protocol_receive(uint8_t cmd, uint8_t confirm);
   int32_t serial_protocol_send(uint8_t cmd, uint8_t confirm);
+  int32_t serial_protocol_exchange(uint8_t cmd, uint8_t confirm);
   int32_t _serial_protocol_send_with_data(uint8_t cmd, void *data, uint16_t data_size, uint8_t confirm);
+  int32_t _serial_protocol_exchange_with_data(uint8_t cmd, uint8_t *data, uint16_t data_size, uint8_t confirm);
 
   uint8_t calculate_version_checksumm(void);
   int32_t serial_protocol_receive_cmds_version(void);

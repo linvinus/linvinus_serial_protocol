@@ -62,12 +62,9 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
 
   if(sd_lock_buffer(500)){//try to lock with timeout
 
-    raw[0]=hdrp[0];//sequence
-    raw[1]=hdrp[1];//cmd
-
     if(bodysize > 0){
-      if( body != NULL ){
-        uint8_t *raw_body = raw + SD_HEADER_SIZE;
+      if( body != NULL && bodysize < SD_MAX_PACKET ){
+        uint8_t *raw_body = raw + SD_HEADER_SIZE;//reserve space for header
         uint8_t raw_body_checksumm = 0;
         //copy body to temporary buffer, calculate checksumm
         sd_syslock();
@@ -78,16 +75,18 @@ static int16_t build_and_send_package(sd_header_t *hdr,size_t bodysize,uint8_t* 
           //~ memccpy(,,bodysize,sizeof(uint8_t));
         sd_sysunlock();
 
-        raw[2] = bodysize;//size
-        raw[3] = (uint8_t)~raw_body_checksumm;//invchksumm
+        hdr->size = bodysize;//size
+        hdr->invchksumm = CONVERT_CHKSUMM(raw_body_checksumm);//invchksumm
       }else{
         sd_unlock_buffer();
-        return SD_RET_PROTOCOL_ERR; //protocol error, bodysize >0 but body == NULL
+        return SD_RET_PROTOCOL_ERR; //protocol error, bodysize >0 but body == NULL or too big size
       }
-    }else{//no body
-      raw[2] = hdrp[2];//in size, some usefull data
-      raw[3] = hdrp[3];//in invchksumm, some usefull data
     }
+
+    raw[0] = hdrp[0];//sequence
+    raw[1] = hdrp[1];//cmd
+    raw[2] = hdrp[2];//size, or some usefull data if bodysize==0
+    raw[3] = hdrp[3];//invchksumm, or some usefull data if bodysize==0
 
     pktsize = bodysize + SD_HEADER_SIZE;//body + header
 
@@ -113,13 +112,13 @@ static int16_t call_callback_build_and_send_package(sd_header_t *hdr,SD_CALLBACK
 
   if( callback != NULL && sd_lock_buffer(500)){//try to lock with timeout
 
-    uint8_t *raw_body = raw + SD_HEADER_SIZE;
+    uint8_t *raw_body = raw + SD_HEADER_SIZE;//reserve space for header
     uint8_t bodysize = MIN(SD_MAX_PACKET,hdr->size);//max packet size
     sd_syslock();
     uint8_t invchksumm = callback(0,raw_body,&bodysize);
     if(invchksumm != 0){//filled data succsessfull
       hdr->size = bodysize;//manually fill header
-      hdr->invchksumm = invchksumm;
+      hdr->invchksumm = CONVERT_CHKSUMM(invchksumm);
     }else{
       sd_sysunlock();
       sd_unlock_buffer();
@@ -194,7 +193,7 @@ static size_t cobs_receive_decode(size_t pktsize, uint8_t* destination,uint8_t i
   FINISH:
 
   //warning: comparison of promoted ~unsigned with unsigned https://gcc.gnu.org/bugzilla/show_bug.cgi?id=38341
-  if( invchksumm !=0 && ((uint8_t)~chksumm) != invchksumm)
+  if( invchksumm !=0 && CONVERT_CHKSUMM(chksumm) != invchksumm)
     return SD_RET_PROTOCOL_ERR;//error, broken package, checksum mismatch
 
   return (dst - destination);
@@ -280,104 +279,136 @@ static inline void _sd_main_loop_iterate(void){
           last_sequence = SD_SEQ_MASK(hdr->sequence);//used for next outgoing message
 
           if(hdr->size < SD_MAX_PACKET ){//size is ok
+            
+            uint8_t cmd_idx = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit
 
-            if( SD_CMD_INDEX_MASK(hdr->cmd) < SD_CMDS_COUNT ){                                        /* known CMD */
+            if( cmd_idx < SD_CMDS_COUNT ){                                        /* known CMD */
 
-              if(SD_CMD_ISGET(hdr->cmd))                                                              /* CMD type GET */
-              {
+              if( hdr->invchksumm != 0 ){//there is some usfull body in incoming packet
+                /*
+                 * firstly receive incoming data
+                 * 
+                 * */
+                //if( !SD_CMD_ISGET(hdr->cmd) || (  SD_CMD_ISGET(hdr->cmd) ) )        /* CMD type SET, or GET with SET data */
+                {
 
-                hdr->cmd = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit
+                  if( SD_CMDS[cmd_idx].rx_data_size == hdr->size ){//fixed size format
 
-                if(SD_CMDS[hdr->cmd].tx_data_size != 0 ){//fixed size format
-                  if(SD_CMDS[hdr->cmd].tx_data_size == hdr->size){//check size
-                    build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_data_size,(uint8_t*)SD_CMDS[hdr->cmd].tx_data);
-
-                    //tx callback
-                    if(SD_CMDS[hdr->cmd].tx_callback != NULL){
-                      SD_CMDS[hdr->cmd].tx_callback(hdr->size,SD_CMDS[hdr->cmd].tx_data,SD_CMDS[hdr->cmd].tx_arg);
-                    }
-                  }else{
-                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);
-                  }
-                }else{                                                                                 /* CMD GET variable size format, or wrong configuration */
-                  if(SD_CMDS[hdr->cmd].tx_callback != NULL){//call tx callback to fill variable data
-                    call_callback_build_and_send_package(hdr,SD_CMDS[hdr->cmd].tx_callback);
-                  }else{
-                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].tx_data_size);//report our prefered size
-                  }
-                }//end variable size format
-              }
-              else                                                                                     /* CMD type SET */
-              {
-                if( SD_CMDS[hdr->cmd].rx_data_size == hdr->size ){//fixed size format
-
-                  //receive body in temporary buffer
-                  if(sd_lock_buffer(500)){
-                    if(cobs_receive_decode(hdr->size, cobs_buf_p, hdr->invchksumm) == hdr->size ){
-
-                      //got body
-                      uint8_t* rx_data = SD_CMDS[hdr->cmd].rx_data;
-                      uint8_t *raw = cobs_buf_p;
-
-                      if(rx_data != NULL){
-                        //copy body to destination
-                        sd_syslock();
-                        uint16_t i;
-                        for(i=0; i < hdr->size; i++){
-                          *(rx_data++) = *(raw++);
-                        }
-                        sd_sysunlock();
-                        sd_unlock_buffer();
-                        rx_data = SD_CMDS[hdr->cmd].rx_data;//restore pointer
-                      }else
-                        rx_data = cobs_buf_p;
-
-                      //callback
-                      uint8_t callback_status;
-                      if(SD_CMDS[hdr->cmd].rx_callback != NULL){
-                        callback_status = SD_CMDS[hdr->cmd].rx_callback(hdr->size,rx_data,SD_CMDS[hdr->cmd].rx_arg);
-                      }
-
-                      sd_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
-
-                      if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
-                        //send ak
-                        system_message_answer(hdr,SP_OK,callback_status);
-                      }
-                    }else {//body error
-                      sd_unlock_buffer();
-                      system_message_answer(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
-                    }
-                  }//sd_lock_buffer
-
-                }else{                                                                                  /* CMD SET variable size format, or wrong configuration */
-                  //call tx callback to fill variable data
-                  if(SD_CMDS[hdr->cmd].rx_callback != NULL){
                     //receive body in temporary buffer
                     if(sd_lock_buffer(500)){
                       if(cobs_receive_decode(hdr->size, cobs_buf_p, hdr->invchksumm) == hdr->size ){
+
                         //got body
-                        uint8_t callback_status = SD_CMDS[hdr->cmd].rx_callback(hdr->size, cobs_buf_p, NULL);
-                        sd_unlock_buffer();
+                        uint8_t* rx_data = SD_CMDS[cmd_idx].rx_data;
+                        uint8_t *raw = cobs_buf_p;
 
-                        sd_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
+                        if(rx_data != NULL){
+                          //copy body to destination
+                          sd_syslock();
+                          uint16_t i;
+                          for(i=0; i < hdr->size; i++){
+                            *(rx_data++) = *(raw++);
+                          }
+                          sd_sysunlock();
+                          sd_unlock_buffer();
+                          rx_data = SD_CMDS[cmd_idx].rx_data;//restore pointer
+                        }else
+                          rx_data = cobs_buf_p;
 
-                        if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
-                          //send ak
-                          system_message_answer(hdr,SP_OK,callback_status);
+                        //callback
+                        uint8_t callback_status;
+                        if(SD_CMDS[cmd_idx].rx_callback != NULL){
+                          callback_status = SD_CMDS[cmd_idx].rx_callback(hdr->size,rx_data,SD_CMDS[cmd_idx].rx_arg);
                         }
+                        
+                        if(!SD_CMD_ISGET(hdr->cmd)){ //GET cmd is processed later
+                          sd_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
+                          /* for debug only
+                          if(protocol_inform_fn != NULL)
+                            protocol_inform_fn(hdr->sequence, hdr->cmd, hdr->size);
+                          */ 
 
+                          if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
+                            //send ak
+                            system_message_answer(hdr,SP_OK,callback_status);
+                          }
+                        }
                       }else {//body error
                         sd_unlock_buffer();
                         system_message_answer(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
+                        return;//skip GET 
                       }
                     }//sd_lock_buffer
-                  }else{
-                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[hdr->cmd].rx_data_size);//report our prefered size
-                  }
-                }//end RX variable size format
 
-              }//CMD set
+                  }else{                                                                                  /* CMD SET variable size format, or wrong configuration */
+                    //call tx callback to fill variable data
+                    if(SD_CMDS[cmd_idx].rx_callback != NULL){
+                      //receive body in temporary buffer
+                      if(sd_lock_buffer(500)){
+                        if(cobs_receive_decode(hdr->size, cobs_buf_p, hdr->invchksumm) == hdr->size ){
+                          //got body
+                          uint8_t callback_status = SD_CMDS[cmd_idx].rx_callback(hdr->size, cobs_buf_p, NULL);
+                          sd_unlock_buffer();
+                          
+                          if(!SD_CMD_ISGET(hdr->cmd)){ //GET cmd is processed later
+                            sd_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
+
+                            if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
+                              //send ak
+                              system_message_answer(hdr,SP_OK,callback_status);
+                            }
+                          }
+
+                        }else {//body error
+                          sd_unlock_buffer();
+                          system_message_answer(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
+                          return;//skip GET 
+                        }
+                      }//sd_lock_buffer
+                      //else - must not happens
+                    }else{
+                      skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].rx_data_size);//report our prefered size
+                    }
+                  }//end RX variable size format
+
+                }//CMD set
+              }
+
+              if(SD_CMD_ISGET(hdr->cmd))                                                              /* CMD type GET */
+              {
+                /*
+                 * send some data if it was requested
+                 *
+                 * */
+                 hdr->cmd = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit,prevent infinity loop
+
+                if(SD_CMDS[cmd_idx].tx_data_size != 0 ){//fixed size format
+                  /*
+                   * check size,
+                   * skip checking if hdr->invchksumm != 0
+                   *   this means "exchange packet" type, receiver will check size anyway
+                   * 
+                   */ 
+                  if( hdr->invchksumm !=0 || SD_CMDS[cmd_idx].tx_data_size == hdr->size){
+                    build_and_send_package(hdr,SD_CMDS[cmd_idx].tx_data_size,(uint8_t*)SD_CMDS[cmd_idx].tx_data);
+
+                    //tx callback
+                    if(SD_CMDS[cmd_idx].tx_callback != NULL){
+                      SD_CMDS[cmd_idx].tx_callback(hdr->size,SD_CMDS[cmd_idx].tx_data,SD_CMDS[cmd_idx].tx_arg);
+                    }
+                  }else{
+                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].tx_data_size);
+                  }
+                }else{                                                                                 /* CMD GET variable size format, or wrong configuration */
+                  if(SD_CMDS[cmd_idx].tx_callback != NULL){//call tx callback to fill variable data
+                    call_callback_build_and_send_package(hdr,SD_CMDS[cmd_idx].tx_callback);
+                  }else{
+                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].tx_data_size);//report our prefered size
+                  }
+                }//end variable size format
+              }//end CMD type GET
+
+
             }else
               skip_and_aswer(hdr,SP_UNKNOWNCMD,hdr->size);
 
@@ -417,22 +448,38 @@ void sd_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn){
 int32_t serial_protocol_receive(uint8_t cmd, uint8_t confirm){
   if(cmd < SD_CMDS_COUNT )
   {
+    return _serial_protocol_exchange_with_data(cmd,NULL,SD_CMDS[cmd].rx_data_size,confirm);
+  }else
+    return SD_RET_PROTOCOL_ERR;//ERROR
+}
+
+int32_t serial_protocol_exchange(uint8_t cmd, uint8_t confirm){
+  if(cmd < SD_CMDS_COUNT )
+  {
+    return _serial_protocol_exchange_with_data(cmd,SD_CMDS[cmd].tx_data, SD_CMDS[cmd].tx_data_size,confirm);
+  }else
+    return SD_RET_PROTOCOL_ERR;//ERROR
+}
+
+/*
+ * If data == NULL, but data_size != 0 then only receive data with requested size
+ *
+ * */
+int32_t _serial_protocol_exchange_with_data(uint8_t cmd, uint8_t *data, uint16_t data_size, uint8_t confirm){
     sd_header_t hdr1;
     sd_header_t  *hdr = &hdr1;
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,0); //remove confirm bit, the answer is our confirm
     hdr->cmd = SD_CMD_CREATE_GET(cmd);//GET
-    hdr->size = SD_CMDS[cmd].rx_data_size;
+    hdr->size = data_size;//GET data size, may be overwritten in build_and_send_package
     hdr->invchksumm = 0;
-    if( (hdr->size != 0 && build_and_send_package(hdr, 0, NULL) == (SD_HEADER_SIZE+1)/*hdr->size*/)
-     || (hdr->size == 0 && ( cmd == 0 || SD_CMDS[cmd].rx_callback != NULL) && build_and_send_package(hdr, 0, NULL) == (SD_HEADER_SIZE+1)) )
+    uint8_t body_size = (data != NULL ? data_size : 0);
+    if( build_and_send_package(hdr, body_size, data) == (SD_HEADER_SIZE+ body_size +1) )
         if(confirm)
           return sd_wait_system_message(SD_SEQ_MASK(hdr->sequence),cmd, SD_DEFAULT_TIMEOUT);//return sd_wait_system_message state, < 0 if error
         else
           return SD_SEQ_MASK(hdr->sequence);//OK
     else
         return SD_RET_PROTOCOL_ERR;//ERROR
-  }else
-    return SD_RET_PROTOCOL_ERR;//ERROR
 }
 
 /* Send SD_CMDS[cmd].tx_data to remote side
@@ -453,6 +500,7 @@ int32_t _serial_protocol_send_with_data(uint8_t cmd, void *data, uint16_t data_s
     sd_header_t  *hdr = &hdr1;
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,confirm);
     hdr->cmd = SD_CMD_CREATE_SET(cmd);//SET
+    hdr->invchksumm = 0;
 
     int16_t ret = build_and_send_package(hdr,data_size,data);
     if(ret < 0)
@@ -528,7 +576,7 @@ int32_t sd_printf(uint8_t cmd,const char *fmt,...){
     raw[0] = SD_SEQ_CREATE(++last_sequence,0);
     raw[1] = cmd;
     raw[2] = bodysize;//size
-    raw[3] = ~(raw_body_checksumm);//invchksumm
+    raw[3] = CONVERT_CHKSUMM(raw_body_checksumm);//invchksumm
 
     pktsize = bodysize + SD_HEADER_SIZE;//body + header
 

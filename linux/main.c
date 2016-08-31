@@ -61,10 +61,62 @@ void sd_protocol_inform_callback(uint8_t sequence,uint8_t cmd,uint8_t state){
     default:
       c="Unknown state!";
   }
-  
+
   if(c != NULL)
     fprintf (stderr,"\r\ngot inform cmd(%d)[%d]=%d %s\r\n",(uint8_t)SD_CMD_INDEX_MASK(cmd),(uint8_t)SD_SEQ_MASK(sequence),(uint8_t)state,c);
 }
+
+RobotCFG_t RobotCFG2;
+
+void check_send_receive(){
+  int res;
+    /*
+     * fill RobotCFG struct with data from remote side
+     */
+    //~ printf("<%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
+    res = serial_protocol_receive(SP_CONFIGURATION,SD_SYNC);
+    printf("cmd=%d seq=%d\r\n",SP_CONFIGURATION,SD_SEQ_MASK(res>>16));
+    if(res <0) printf("error: serial_protocol_get_cmd(1,1)=%d\r\n",res);
+    else{
+      //~ printf(">%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
+      if( (RobotCFG.A - RobotCFG2.A) != 1 ||
+          (RobotCFG.B - RobotCFG2.B) != 1  ){
+          printf("error: %d!=%d %d!=%d \r\n",RobotCFG.A, RobotCFG2.A,RobotCFG.B, RobotCFG2.B);
+        }
+
+      RobotCFG2 = RobotCFG;
+      /*
+       * Send RobotCFG struct to remote side,
+       * on remote side, after receiving, special callback function will be called,
+       * witch will update data in RobotCFG,
+       * so, after next serial_protocol_receive we will get updated data
+       */
+      res = serial_protocol_send(SP_CONFIGURATION,SD_SYNC);
+      if(res <0) printf("error: serial_protocol_set_cmd(1,1)\r\n");
+
+    }
+}//check_send_receive
+
+void check_exchange(){
+  int res;
+    /*
+     * fill RobotCFG struct with data from remote side
+     */
+    //~ printf("<%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
+    res = serial_protocol_exchange(SP_CONFIGURATION,SD_ASYNC);
+    printf("cmd=%d seq=%d\r\n",SP_CONFIGURATION,res);
+    res = sd_wait_system_message(SD_SEQ_MASK(res),SP_CONFIGURATION, SD_DEFAULT_TIMEOUT);
+    if(res <0) printf("error: serial_protocol_get_cmd(1,1)=%d\r\n",res);
+    else{
+      //~ printf(">%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
+      if( (RobotCFG.A - RobotCFG2.A) != 1 ||
+          (RobotCFG.B - RobotCFG2.B) != 1  ){
+          printf("error: %d!=%d %d!=%d \r\n",RobotCFG.A, RobotCFG2.A,RobotCFG.B, RobotCFG2.B);
+        }
+
+      RobotCFG2 = RobotCFG;
+    }
+}//check_send_receive
 
 int main(void) {
 
@@ -77,9 +129,9 @@ int main(void) {
 
   sd_register_protocol_inform_func(sd_protocol_inform_callback);
 
-  
 
-  /* Firstly get version 
+
+  /* Firstly get version
    * checking  connection
    * */
   int remote_checksumm;
@@ -102,36 +154,18 @@ int main(void) {
   }
 */
   struct timespec   start,end,dt;
-  int res;
   
   while(1){
 
     clock_gettime(CLOCK_MONOTONIC, &start);
-
-    /*
-     * fill RobotCFG struct with data from remote side
-     */
-    //~ printf("<%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
-    res = serial_protocol_receive(SP_CONFIGURATION,SD_SYNC);
-    if(res <0) printf("error: serial_protocol_get_cmd(1,1)\r\n");
-    else{
-      //~ printf(">%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
-      /*
-       * Send RobotCFG struct to remote side,
-       * on remote side, after receiving, special callback function will be called,
-       * witch will update data in RobotCFG,
-       * so, after next serial_protocol_receive we will get updated data
-       */ 
-      res = serial_protocol_send(SP_CONFIGURATION,SD_SYNC);
-      if(res <0) printf("error: serial_protocol_set_cmd(1,1)\r\n");
-      
-    }
+      //~ check_send_receive();
+      check_exchange();//should be twice fast as check_send_receive()
     clock_gettime(CLOCK_MONOTONIC, &end);
-    
+
     sd_lld_timespec_diff(&start,&end,&dt);
-    
+
     printf("transaction time: %dms \r\n",(int)(dt.tv_nsec/1000000 + dt.tv_sec*1000)) ;
-    
+
     //~ usleep (500 * 1000);
     //~ c = getch();
   }
