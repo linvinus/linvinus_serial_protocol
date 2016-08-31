@@ -221,9 +221,15 @@ static inline void system_message_answer(sd_header_t *hdr, SerialPacketSystemMes
   build_and_send_package(hdr, 0, NULL);
 }
 
-static inline void skip_and_aswer(sd_header_t *hdr, SerialPacketSystemMessageReason_t err, uint8_t status){
+static inline void system_message_answer_error(sd_header_t *hdr, SerialPacketSystemMessageReason_t reason, uint8_t status){
+  if(protocol_inform_fn != NULL)
+    protocol_inform_fn(hdr->sequence | SD_SEQ_SYSMES_MASK(reason), hdr->cmd, status);
+  system_message_answer(hdr,reason,status);
+}
+
+static inline void skip_and_aswer_error(sd_header_t *hdr, SerialPacketSystemMessageReason_t err, uint8_t status){
   skip(hdr);
-  system_message_answer(hdr,err,status);
+  system_message_answer_error(hdr,err,status);
 }
 
 uint8_t calculate_version_checksumm(void){
@@ -335,7 +341,7 @@ static inline void _sd_main_loop_iterate(void){
                         }
                       }else {//body error
                         sd_unlock_buffer();
-                        system_message_answer(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
+                        system_message_answer_error(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
                         return;//skip GET 
                       }
                     }//sd_lock_buffer
@@ -361,17 +367,21 @@ static inline void _sd_main_loop_iterate(void){
 
                         }else {//body error
                           sd_unlock_buffer();
-                          system_message_answer(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
+                          system_message_answer_error(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
                           return;//skip GET 
                         }
                       }//sd_lock_buffer
                       //else - must not happens
                     }else{
-                      skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].rx_data_size);//report our prefered size
+                      skip_and_aswer_error(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].rx_data_size);//report our prefered size
                     }
                   }//end RX variable size format
 
                 }//CMD set
+              }else if(!SD_CMD_ISGET(hdr->cmd) && hdr->size !=0){
+                /* SET cmd with broken invchksumm*/
+                skip_and_aswer_error(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm);
+                return;
               }
 
               if(SD_CMD_ISGET(hdr->cmd))                                                              /* CMD type GET */
@@ -397,23 +407,25 @@ static inline void _sd_main_loop_iterate(void){
                       SD_CMDS[cmd_idx].tx_callback(hdr->size,SD_CMDS[cmd_idx].tx_data,SD_CMDS[cmd_idx].tx_arg);
                     }
                   }else{
-                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].tx_data_size);
+                    skip_and_aswer_error(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].tx_data_size);
                   }
                 }else{                                                                                 /* CMD GET variable size format, or wrong configuration */
                   if(SD_CMDS[cmd_idx].tx_callback != NULL){//call tx callback to fill variable data
                     call_callback_build_and_send_package(hdr,SD_CMDS[cmd_idx].tx_callback);
                   }else{
-                    skip_and_aswer(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].tx_data_size);//report our prefered size
+                    skip_and_aswer_error(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].tx_data_size);//report our prefered size
                   }
                 }//end variable size format
               }//end CMD type GET
 
 
-            }else
-              skip_and_aswer(hdr,SP_UNKNOWNCMD,hdr->size);
+            }else{
+              skip_and_aswer_error(hdr,SP_UNKNOWNCMD,hdr->size);
+            }
 
-          }else
-            skip_and_aswer(hdr,SP_WRONGSIZE,hdr->size);
+          }else{
+            skip_and_aswer_error(hdr,SP_WRONGSIZE,hdr->size);
+          }
         }//nonsystem message
 
       }//if got header

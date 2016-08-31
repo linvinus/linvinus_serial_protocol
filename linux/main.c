@@ -52,6 +52,7 @@ void sd_protocol_inform_callback(uint8_t sequence,uint8_t cmd,uint8_t state){
     break;
     case SP_WRONGCHECKSUMM:
       c="SP_WRONGCHECKSUMM";
+    break;
     case SP_WRONGSIZE:
       c="SP_WRONGSIZE";
     break;
