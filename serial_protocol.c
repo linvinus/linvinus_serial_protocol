@@ -159,7 +159,7 @@ static size_t cobs_receive_decode(size_t pktsize, uint8_t* destination,uint8_t i
 
   while(dst < end)
   {
-      if(cobs_state_rx.n < 1){ //load new code only if previous was fully parsed (cobs_state_rx.n==1 || cobs_state_rx.n==0)
+      if(cobs_state_rx.n == 0){ //load new code only if previous was fully parsed
 
         cobs_state_rx.code = sd_lld_get_timeout(100);
 
@@ -250,7 +250,7 @@ uint8_t sprt_calculate_version_checksumm(void){
 
 /* main protocol thread
  * */
-static inline void _sd_main_loop_iterate(void){
+void _sprt_main_loop_iterate(void){
     int32_t c = -1;
     c = sd_lld_get_timeout(100);
 
@@ -285,7 +285,7 @@ static inline void _sd_main_loop_iterate(void){
           last_sequence = SD_SEQ_MASK(hdr->sequence);//used for next outgoing message
 
           if(hdr->size < SD_MAX_PACKET ){//size is ok
-            
+
             uint8_t cmd_idx = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit
 
             if( cmd_idx < SD_CMDS_COUNT ){                                        /* known CMD */
@@ -293,114 +293,120 @@ static inline void _sd_main_loop_iterate(void){
               if( hdr->invchksumm != 0 ){//there is some usfull body in incoming packet
                 /*
                  * firstly receive incoming data
-                 * 
+                 *
                  * */
-                //if( !SD_CMD_ISGET(hdr->cmd) || (  SD_CMD_ISGET(hdr->cmd) ) )        /* CMD type SET, or GET with SET data */
-                {
+                if( SD_CMDS[cmd_idx].rx_data_size == hdr->size ){
 
-                  if( SD_CMDS[cmd_idx].rx_data_size == hdr->size ){//fixed size format
+/*CMD SET fixed size format*/
 
+                  //receive body in temporary buffer
+                  if(sd_lld_lock_buffer(500)){
+                    if(cobs_receive_decode(hdr->size, cobs_buf_p, hdr->invchksumm) == hdr->size ){
+
+                      //got body
+                      uint8_t* rx_data = SD_CMDS[cmd_idx].rx_data;
+                      uint8_t *raw = cobs_buf_p;
+
+                      if(rx_data != NULL){
+                        //copy body to destination
+                        sd_lld_syslock();
+                        uint16_t i;
+                        for(i=0; i < hdr->size; i++){
+                          *(rx_data++) = *(raw++);
+                        }
+                        sd_lld_sysunlock();
+                        sd_lld_unlock_buffer();
+                        rx_data = SD_CMDS[cmd_idx].rx_data;//restore pointer
+                      }else
+                        rx_data = cobs_buf_p;
+
+                      //callback
+                      uint8_t callback_status;
+                      if(SD_CMDS[cmd_idx].rx_callback != NULL){
+                        callback_status = SD_CMDS[cmd_idx].rx_callback(hdr->size,rx_data,SD_CMDS[cmd_idx].rx_arg);
+                      }
+
+                      if(!SD_CMD_ISGET(hdr->cmd)){ //GET cmd is processed later
+                        sd_lld_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
+                        /* for debug only
+                        if(protocol_inform_fn != NULL)
+                          protocol_inform_fn(hdr->sequence, hdr->cmd, hdr->size);
+                        */
+
+                        if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
+                          //send ak
+                          system_message_answer(hdr,SP_OK,callback_status);
+                        }
+                      }
+                    }else {//body error
+                      sd_lld_unlock_buffer();
+                      system_message_answer_error(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
+                      return;//skip GET
+                    }
+                  }//sd_lld_lock_buffer
+                  //else - must not happens
+
+                }else{
+
+/* CMD SET variable size format, or wrong configuration */
+
+                  //call tx callback to fill variable data
+                  if(SD_CMDS[cmd_idx].rx_callback != NULL){
                     //receive body in temporary buffer
                     if(sd_lld_lock_buffer(500)){
                       if(cobs_receive_decode(hdr->size, cobs_buf_p, hdr->invchksumm) == hdr->size ){
-
                         //got body
-                        uint8_t* rx_data = SD_CMDS[cmd_idx].rx_data;
-                        uint8_t *raw = cobs_buf_p;
+                        uint8_t callback_status = SD_CMDS[cmd_idx].rx_callback(hdr->size, cobs_buf_p, NULL);
+                        sd_lld_unlock_buffer();
 
-                        if(rx_data != NULL){
-                          //copy body to destination
-                          sd_lld_syslock();
-                          uint16_t i;
-                          for(i=0; i < hdr->size; i++){
-                            *(rx_data++) = *(raw++);
-                          }
-                          sd_lld_sysunlock();
-                          sd_lld_unlock_buffer();
-                          rx_data = SD_CMDS[cmd_idx].rx_data;//restore pointer
-                        }else
-                          rx_data = cobs_buf_p;
-
-                        //callback
-                        uint8_t callback_status;
-                        if(SD_CMDS[cmd_idx].rx_callback != NULL){
-                          callback_status = SD_CMDS[cmd_idx].rx_callback(hdr->size,rx_data,SD_CMDS[cmd_idx].rx_arg);
-                        }
-                        
                         if(!SD_CMD_ISGET(hdr->cmd)){ //GET cmd is processed later
                           sd_lld_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
-                          /* for debug only
-                          if(protocol_inform_fn != NULL)
-                            protocol_inform_fn(hdr->sequence, hdr->cmd, hdr->size);
-                          */ 
 
                           if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
                             //send ak
                             system_message_answer(hdr,SP_OK,callback_status);
                           }
                         }
+
                       }else {//body error
                         sd_lld_unlock_buffer();
                         system_message_answer_error(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
-                        return;//skip GET 
+                        return;//skip GET
                       }
                     }//sd_lld_lock_buffer
                     //else - must not happens
-                  }else{                                                                                  /* CMD SET variable size format, or wrong configuration */
-                    //call tx callback to fill variable data
-                    if(SD_CMDS[cmd_idx].rx_callback != NULL){
-                      //receive body in temporary buffer
-                      if(sd_lld_lock_buffer(500)){
-                        if(cobs_receive_decode(hdr->size, cobs_buf_p, hdr->invchksumm) == hdr->size ){
-                          //got body
-                          uint8_t callback_status = SD_CMDS[cmd_idx].rx_callback(hdr->size, cobs_buf_p, NULL);
-                          sd_lld_unlock_buffer();
-                          
-                          if(!SD_CMD_ISGET(hdr->cmd)){ //GET cmd is processed later
-                            sd_lld_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
+                  }else{
+                    skip_and_aswer_error(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].rx_data_size);//report our prefered size
+                  }
 
-                            if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
-                              //send ak
-                              system_message_answer(hdr,SP_OK,callback_status);
-                            }
-                          }
+                }//end RX variable size format
 
-                        }else {//body error
-                          sd_lld_unlock_buffer();
-                          system_message_answer_error(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm); //don't skip because already partially or completely received
-                          return;//skip GET 
-                        }
-                      }//sd_lld_lock_buffer
-                      //else - must not happens
-                    }else{
-                      skip_and_aswer_error(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].rx_data_size);//report our prefered size
-                    }
-                  }//end RX variable size format
-
-                }//CMD set
               }else if(!SD_CMD_ISGET(hdr->cmd) && hdr->size !=0){
                 /* SET cmd with broken invchksumm*/
                 skip_and_aswer_error(hdr,SP_WRONGCHECKSUMM,hdr->invchksumm);
                 return;
               }
 
-              /*this section is also always processed for every packet*/
-
-              if(SD_CMD_ISGET(hdr->cmd))                                                              /* CMD type GET */
+/*this section is also always processed for every packet, because of exchange command*/
+/* CMD type GET */
+              if(SD_CMD_ISGET(hdr->cmd))
               {
                 /*
                  * send some data if it was requested
                  *
                  * */
-                 hdr->cmd = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit,prevent infinity loop
+                 hdr->cmd = SD_CMD_INDEX_MASK(hdr->cmd);//remove GET bit from header struct,prevent infinity loop
 
-                if(SD_CMDS[cmd_idx].tx_data_size != 0 ){//fixed size format
+                if(SD_CMDS[cmd_idx].tx_data_size != 0 ){
+
+/*CMD GET fixed size format*/
+
                   /*
                    * check size,
                    * skip checking if hdr->invchksumm != 0
                    *   this means "exchange packet" type, receiver will check size anyway
-                   * 
-                   */ 
+                   *
+                   */
                   if( hdr->invchksumm !=0 || SD_CMDS[cmd_idx].tx_data_size == hdr->size){
                     build_and_send_package(hdr,SD_CMDS[cmd_idx].tx_data_size,(uint8_t*)SD_CMDS[cmd_idx].tx_data);
 
@@ -411,7 +417,9 @@ static inline void _sd_main_loop_iterate(void){
                   }else{
                     skip_and_aswer_error(hdr,SP_WRONGSIZE,SD_CMDS[cmd_idx].tx_data_size);
                   }
-                }else{                                                                                 /* CMD GET variable size format, or wrong configuration */
+
+                }else{
+/* CMD GET variable size format, or wrong configuration */
                   if(SD_CMDS[cmd_idx].tx_callback != NULL){//call tx callback to fill variable data
                     call_callback_build_and_send_package(hdr,SD_CMDS[cmd_idx].tx_callback);
                   }else{
@@ -420,7 +428,7 @@ static inline void _sd_main_loop_iterate(void){
                 }//end variable size format
               }//end CMD type GET
 
-
+/* DONE */
             }else{
               skip_and_aswer_error(hdr,SP_UNKNOWNCMD,hdr->size);
             }
@@ -435,12 +443,6 @@ static inline void _sd_main_loop_iterate(void){
     }//if COBS_SYMBOL
 }//_sd_main_loop
 
-
-
-void sprt_main_loop_iterate(void){
-  _sd_main_loop_iterate();
-}
-
 void sprt_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn){
   fast_message_fn = fn;
 }
@@ -450,7 +452,7 @@ void sprt_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn){
 }
 
 static int32_t _sprt_process_command(sd_header_t *hdr,size_t body_size,uint8_t* body, uint8_t confirm){
-  
+
     if( build_and_send_package(hdr, body_size, body) == (int16_t)(SD_HEADER_SIZE+ body_size +1) ){
         if(confirm)
           return sprt_wait_system_message(SD_SEQ_MASK(hdr->sequence),SD_CMD_INDEX_MASK(hdr->cmd), SD_DEFAULT_TIMEOUT);//return sd_wait_system_message state, < 0 if error
@@ -462,10 +464,10 @@ static int32_t _sprt_process_command(sd_header_t *hdr,size_t body_size,uint8_t* 
 /*************** protocol commands ************************************/
 
 /* _sprt_exchange_with_data
- * 
+ *
  * This is unsafe function but allow more freedom for protocol control.
  * Must be used by experts only.
- * 
+ *
  * If data == NULL, but data_size != 0 then only receive data with requested size
  *
  * Return: >=0 - if success
@@ -476,26 +478,26 @@ int32_t _sprt_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size,
   sd_header_t  *hdr = &hdr1;
 
   cmd = SD_CMD_INDEX_MASK(cmd);                       //ensure that command index is correct
-  
+
   if(cmd < SD_CMDS_COUNT )
   {
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,0); //remove confirm bit, the answer is our confirm
     hdr->cmd = SD_CMD_CREATE_GET(cmd);                //GET
     hdr->size = body_size;                            //GET data size, may be overwritten in build_and_send_package
     hdr->invchksumm = 0;                              //invchksumm must be zero if body_size==0, otherwise will be updated in build_and_send_package
-    
+
     if(body == NULL) body_size = 0;                   //if body == NULL then don't send any data in build_and_send_package, only receive amount of hdr->size
-      
+
     return _sprt_process_command(hdr,body_size,body,confirm);
   }else
-    return SD_RET_ERR1;//ERROR    
+    return SD_RET_ERR1;//ERROR
 }
 
 /* _sprt_send_with_data
- * 
+ *
  * This is unsafe function but allow more freedom for protocol control.
  * Must be used by experts only.
- * 
+ *
  * Send any data to remote side,
  * user must enshure that sending data size is the same as on remote size! (except for commands with variable length)
  * Return: >=0 - if success
@@ -504,9 +506,9 @@ int32_t _sprt_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size,
 int32_t _sprt_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm){
   sd_header_t hdr1;
   sd_header_t  *hdr = &hdr1;
-  
+
   cmd = SD_CMD_INDEX_MASK(cmd);                               //ensure that command index is correct
-  
+
   if(cmd < SD_CMDS_COUNT && body != NULL  && body_size != 0)
   {
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,confirm);   //set confirm if required
@@ -521,7 +523,7 @@ int32_t _sprt_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uin
  *
  * This is unsafe function but allow more freedom for protocol control.
  * Must be used by experts only.
- * 
+ *
  * Return: >=0 - if success
  *         <0  - on error
  * */
@@ -546,7 +548,7 @@ int32_t sprt_send(uint8_t cmd, uint8_t confirm){
 
 /*
  * Receive data from remote side into SD_CMDS[cmd].rx_data, or as argument in callback function
- * 
+ *
  * Incoming data will be stored in SD_CMDS[cmd].rx_data if SD_CMDS[cmd].rx_data != NULL
  * or send as arguments for SD_CMDS[cmd].rx_callback if SD_CMDS[cmd].rx_callback != NULL
  *
@@ -561,7 +563,7 @@ int32_t sprt_receive(uint8_t cmd, uint8_t confirm){
  * Send and receive in single transaction
  *
  * Send SD_CMDS[cmd].tx_data and receive into SD_CMDS[cmd].rx_data
- * 
+ *
  * */
 int32_t sprt_exchange(uint8_t cmd, uint8_t confirm){
     return _sprt_exchange_with_data(cmd,SD_CMDS[cmd].tx_data, SD_CMDS[cmd].tx_data_size,confirm);
@@ -580,7 +582,7 @@ int32_t sprt_exchange(uint8_t cmd, uint8_t confirm){
  *         write(stdout, data, data_size);//print to std out
  *  return 0;//not used
  * }
- * 
+ *
  * */
 int32_t sprt_printf(uint8_t cmd,const char *fmt,...){
   uint16_t pktsize=0;

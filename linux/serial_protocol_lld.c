@@ -64,7 +64,7 @@ static uint32_t sd_last_system_message = 0; /*used to sync system messages*/
   } while (0)
 
 
-static int set_interface_attribs (int fd, int speed, int parity){
+static int tty_set_interface_attribs (int fd, int speed, int parity){
         struct termios tty;
         memset (&tty, 0, sizeof tty);
         if (tcgetattr (fd, &tty) != 0)
@@ -106,7 +106,7 @@ static int set_interface_attribs (int fd, int speed, int parity){
         return SD_RET_OK;
 }
 
-static void set_blocking (int fd, int should_block) {
+static void tty_set_blocking (int fd, int should_block) {
         struct termios tty;
         memset (&tty, 0, sizeof tty);
         if (tcgetattr (fd, &tty) != 0)
@@ -136,10 +136,10 @@ int inputAvailable() {
   //~ return (FD_ISSET(STDIN_FILENO, &fds));
 }*/
 
-static void* serial_protocol_thread_fn(void *arg){
+static void* _sd_lld_thread_fn(void *arg){
   (void)arg;
   while(1){
-    sprt_main_loop_iterate();
+    _sprt_main_loop_iterate();
     //~ usleep (1 * 1000); timeout in sd_read_byte is enough
   }
   return SD_RET_OK;
@@ -256,8 +256,6 @@ int sprt_thread_init(char *portname,int portspeed){
 
   int  iret1;
 
-  setbuf(stdout, NULL);// disable buffering entirely
-
   //~ char *portname = "/dev/ttyUSB0";
   //~ char *portname = "/dev/rfcomm1";
   DEBUG_PROCOTOL("opeinig port %s\r\n",portname);
@@ -271,12 +269,12 @@ int sprt_thread_init(char *portname,int portspeed){
           return SD_RET_ERR1;
   }
 
-  set_interface_attribs (TTY_fd, portspeed, 0);  // set speed to 115,200 bps, 8n1 (no parity)
-  set_blocking (TTY_fd, 1);                // set no blocking
+  tty_set_interface_attribs (TTY_fd, portspeed, 0);  // set speed to 115,200 bps, 8n1 (no parity)
+  tty_set_blocking (TTY_fd, 1);                // set no blocking
 
   //~ usleep (5000 * 1000);//for /dev/rfcomm1
 
-  iret1 = pthread_create( &serial_protocol_thread, NULL, serial_protocol_thread_fn, (void*) NULL);
+  iret1 = pthread_create( &serial_protocol_thread, NULL, _sd_lld_thread_fn, (void*) NULL);
   if(iret1){
     fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
     exit(EXIT_FAILURE);
@@ -374,7 +372,7 @@ uint16_t sd_lld_unlock_buffer(void){
   return 1;//always true
 }
 
-void sd_protocol_flush(void){
+void sd_lld_flush(void){
   tcflush(TTY_fd, TCIOFLUSH);
 }
 

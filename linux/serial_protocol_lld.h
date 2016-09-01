@@ -45,11 +45,11 @@ uint16_t sd_lld_unlock_buffer(void);
      int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap);
     void sd_lld_timespec_diff(struct timespec *start, struct timespec *stop, struct timespec *result);
     void sd_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms);
-    
-   /*used in lld drivers*/
-     void sprt_main_loop_iterate(void);
+    void sd_lld_flush(void);
 
-    void sd_protocol_flush(void);
+   /*from serial_protocol.c*/
+     void _sprt_main_loop_iterate(void);
+
 #ifdef __cplusplus
 }
 #endif

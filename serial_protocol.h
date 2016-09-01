@@ -128,11 +128,11 @@ typedef uint8_t (*SD_CALLBACK)(uint16_t data_size,uint8_t *data,void *arg);
 typedef struct SerialProtocolCmd_t SerialProtocolCmd_t;
 
 struct SerialProtocolCmd_t{
-  uint16_t rx_data_size;
+  uint16_t rx_data_size; /*16 bit better for memory align, used only as uint8_t*/
   void *rx_data;
   SD_CALLBACK rx_callback;
   void *rx_arg;
-  uint16_t tx_data_size;
+  uint16_t tx_data_size; /*16 bit better for memory align, used only as uint8_t*/
   void *tx_data;
   SD_CALLBACK tx_callback;
   void *tx_arg;

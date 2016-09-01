@@ -65,7 +65,7 @@ static THD_FUNCTION(ThreadSerialProtocol, arg) {
   (void)arg;
   while(1){
     //~ _sd_main_loop_iterate();
-    sprt_main_loop_iterate();
+    _sprt_main_loop_iterate();
     chThdYield();
     //~ chThdSleepMilliseconds(1);
   }//while 1

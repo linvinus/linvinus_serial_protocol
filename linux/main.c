@@ -124,14 +124,12 @@ int main(void) {
 
   setbuf(stdout, NULL);// disable buffering entirely
 
+  sprt_register_protocol_inform_func(sd_protocol_inform_callback);
+
   if(sprt_thread_init("/dev/rfcomm1",B115200)){
     printf("sprt_thread_init error\r\n");
     exit(EXIT_FAILURE);
   }
-
-  sprt_register_protocol_inform_func(sd_protocol_inform_callback);
-
-
 
   /* Firstly get version
    * checking  connection
@@ -140,7 +138,7 @@ int main(void) {
   do{
     usleep (1000 * 1000);//1s
     printf("Checking version...\r\n");
-    sd_protocol_flush();
+    sd_lld_flush();
     remote_checksumm = sprt_receive_cmds_version();
   }while(remote_checksumm < 0);
 

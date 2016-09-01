@@ -64,7 +64,8 @@ extern "C" {
   inline uint16_t sd_lld_lock_buffer(uint32_t time_ms);
   inline uint16_t sd_lld_unlock_buffer(void);
               int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap);
-              void sprt_main_loop_iterate(void);
+             /*from serial_protocol.c*/
+             void _sprt_main_loop_iterate(void);
 
 #ifdef __cplusplus
 }
