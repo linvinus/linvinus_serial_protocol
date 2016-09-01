@@ -29,7 +29,7 @@ static BSEMAPHORE_DECL(SD_BUFF_SEM,FALSE);
 
 uint8_t cobs_buf1[SD_BUFFER_LENGTH];
 
-inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms){
+inline int32_t sprt_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms){
   uint32_t start = chVTGetSystemTimeX();
   uint32_t elapsed = 0;
   do{
@@ -45,7 +45,7 @@ inline int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t ti
   return SD_RET_TIME_ERR;//timeout anyway
 }
 
-inline void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
+inline void sd_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
   (void)timeout_ms;
   chThdDequeueAllI(&sd_protocol_q_waiting,((uint32_t)sequence<<16 |(uint32_t)cmd<<8 |state));
 }
@@ -65,14 +65,14 @@ static THD_FUNCTION(ThreadSerialProtocol, arg) {
   (void)arg;
   while(1){
     //~ _sd_main_loop_iterate();
-    serial_protocol_main_loop_iterate();
+    sprt_main_loop_iterate();
     chThdYield();
     //~ chThdSleepMilliseconds(1);
   }//while 1
 }//ThreadSerialProtocol
 
 
-void serial_protocol_thread_init(void){
+void sprt_thread_init(void){
   chThdQueueObjectInit(&sd_protocol_q_waiting);
   chThdCreateStatic(waThreadSerialProtocol, sizeof(waThreadSerialProtocol), NORMALPRIO+1, ThreadSerialProtocol, NULL);
 }

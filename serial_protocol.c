@@ -232,7 +232,7 @@ static inline void skip_and_aswer_error(sd_header_t *hdr, SerialPacketSystemMess
   system_message_answer_error(hdr,err,status);
 }
 
-uint8_t calculate_version_checksumm(void){
+uint8_t sprt_calculate_version_checksumm(void){
     uint8_t verchksumm,i;
     verchksumm = SD_MAX_PACKET ^ SD_CMDS_COUNT;
     for(i=0;i<SD_CMDS_COUNT;i++){
@@ -269,7 +269,7 @@ static inline void _sd_main_loop_iterate(void){
         //got header
 
         if(hdr->cmd == SP_SYSTEM_MESSAGE){                                                           /* received protocol system message */
-            sd_broadcast_system_message(hdr->sequence, hdr->size, hdr->invchksumm,500);
+            sd_lld_broadcast_system_message(hdr->sequence, hdr->size, hdr->invchksumm,500);
             if(protocol_inform_fn != NULL)
               protocol_inform_fn(hdr->sequence, hdr->size, hdr->invchksumm);
         }else if(fast_message_fn != NULL && fast_message_fn(hdr)){                                   /* check for fast message */
@@ -278,7 +278,7 @@ static inline void _sd_main_loop_iterate(void){
             system_message_answer(hdr,SP_OK,hdr->invchksumm);
           }
         }else if(hdr->cmd == SD_CMD_CREATE_GET(SP_SYSTEM_MESSAGE) ){                                  /* special case,"get version" */
-          system_message_answer(hdr,SP_VERSION,calculate_version_checksumm());
+          system_message_answer(hdr,SP_VERSION,sprt_calculate_version_checksumm());
         }
         else                                                                                          /* regular message */
         {
@@ -328,7 +328,7 @@ static inline void _sd_main_loop_iterate(void){
                         }
                         
                         if(!SD_CMD_ISGET(hdr->cmd)){ //GET cmd is processed later
-                          sd_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
+                          sd_lld_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
                           /* for debug only
                           if(protocol_inform_fn != NULL)
                             protocol_inform_fn(hdr->sequence, hdr->cmd, hdr->size);
@@ -357,7 +357,7 @@ static inline void _sd_main_loop_iterate(void){
                           sd_lld_unlock_buffer();
                           
                           if(!SD_CMD_ISGET(hdr->cmd)){ //GET cmd is processed later
-                            sd_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
+                            sd_lld_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
 
                             if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
                               //send ak
@@ -437,23 +437,23 @@ static inline void _sd_main_loop_iterate(void){
 
 
 
-void serial_protocol_main_loop_iterate(void){
+void sprt_main_loop_iterate(void){
   _sd_main_loop_iterate();
 }
 
-void sd_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn){
+void sprt_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn){
   fast_message_fn = fn;
 }
 
-void sd_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn){
+void sprt_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn){
   protocol_inform_fn = fn;
 }
 
-static int32_t _serial_protocol_process_command(sd_header_t *hdr,size_t body_size,uint8_t* body, uint8_t confirm){
+static int32_t _sprt_process_command(sd_header_t *hdr,size_t body_size,uint8_t* body, uint8_t confirm){
   
     if( build_and_send_package(hdr, body_size, body) == (int16_t)(SD_HEADER_SIZE+ body_size +1) ){
         if(confirm)
-          return sd_wait_system_message(SD_SEQ_MASK(hdr->sequence),SD_CMD_INDEX_MASK(hdr->cmd), SD_DEFAULT_TIMEOUT);//return sd_wait_system_message state, < 0 if error
+          return sprt_wait_system_message(SD_SEQ_MASK(hdr->sequence),SD_CMD_INDEX_MASK(hdr->cmd), SD_DEFAULT_TIMEOUT);//return sd_wait_system_message state, < 0 if error
         else
           return SD_SEQ_MASK(hdr->sequence);//OK
     }else
@@ -461,7 +461,7 @@ static int32_t _serial_protocol_process_command(sd_header_t *hdr,size_t body_siz
 }
 /*************** protocol commands ************************************/
 
-/* _serial_protocol_exchange_with_data
+/* _sprt_exchange_with_data
  * 
  * This is unsafe function but allow more freedom for protocol control.
  * Must be used by experts only.
@@ -471,7 +471,7 @@ static int32_t _serial_protocol_process_command(sd_header_t *hdr,size_t body_siz
  * Return: >=0 - if success
  *         <0  - on error
  * */
-int32_t _serial_protocol_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm){
+int32_t _sprt_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm){
   sd_header_t hdr1;
   sd_header_t  *hdr = &hdr1;
 
@@ -486,12 +486,12 @@ int32_t _serial_protocol_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t
     
     if(body == NULL) body_size = 0;                   //if body == NULL then don't send any data in build_and_send_package, only receive amount of hdr->size
       
-    return _serial_protocol_process_command(hdr,body_size,body,confirm);
+    return _sprt_process_command(hdr,body_size,body,confirm);
   }else
     return SD_RET_ERR1;//ERROR    
 }
 
-/* _serial_protocol_send_with_data
+/* _sprt_send_with_data
  * 
  * This is unsafe function but allow more freedom for protocol control.
  * Must be used by experts only.
@@ -501,7 +501,7 @@ int32_t _serial_protocol_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t
  * Return: >=0 - if success
  *         <0  - on error
  * */
-int32_t _serial_protocol_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm){
+int32_t _sprt_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm){
   sd_header_t hdr1;
   sd_header_t  *hdr = &hdr1;
   
@@ -512,7 +512,7 @@ int32_t _serial_protocol_send_with_data(uint8_t cmd, uint8_t *body, uint16_t bod
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,confirm);   //set confirm if required
     hdr->cmd = SD_CMD_CREATE_SET(cmd);                        //SET
     hdr->invchksumm = 0;                                      //invchksumm must be zero if body_size==0, otherwise will be updated in build_and_send_package
-    return _serial_protocol_process_command(hdr,body_size,body,confirm);
+    return _sprt_process_command(hdr,body_size,body,confirm);
   }else
     return SD_RET_ERR1;//ERROR
 }
@@ -525,14 +525,14 @@ int32_t _serial_protocol_send_with_data(uint8_t cmd, uint8_t *body, uint16_t bod
  * Return: >=0 - if success
  *         <0  - on error
  * */
-int32_t _serial_protocol_fast_message(uint8_t raw_cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm){
+int32_t _sprt_fast_message(uint8_t raw_cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm){
     sd_header_t hdr1;
     sd_header_t  *hdr = &hdr1;
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,confirm);    //set confirm if required
     hdr->cmd = raw_cmd;                                        //raw cmd send as is, but answer must be masked with SD_CMD_INDEX_MASK()
     hdr->size = dataA;                                         //raw dataA
     hdr->invchksumm = dataB;                                   //raw dataB
-    return _serial_protocol_process_command(hdr,0, NULL,confirm);
+    return _sprt_process_command(hdr,0, NULL,confirm);
 }
 
 /* Send SD_CMDS[cmd].tx_data to remote side
@@ -540,8 +540,8 @@ int32_t _serial_protocol_fast_message(uint8_t raw_cmd, uint8_t dataA, uint8_t da
  * Return: >=0 - if success
  *         <0  - on error
  * */
-int32_t serial_protocol_send(uint8_t cmd, uint8_t confirm){
-  return _serial_protocol_send_with_data(cmd, SD_CMDS[cmd].tx_data, SD_CMDS[cmd].tx_data_size, confirm);
+int32_t sprt_send(uint8_t cmd, uint8_t confirm){
+  return _sprt_send_with_data(cmd, SD_CMDS[cmd].tx_data, SD_CMDS[cmd].tx_data_size, confirm);
 }
 
 /*
@@ -553,8 +553,8 @@ int32_t serial_protocol_send(uint8_t cmd, uint8_t confirm){
  * Return: >=0 - if success
  *         <0  - on error
  * */
-int32_t serial_protocol_receive(uint8_t cmd, uint8_t confirm){
-    return _serial_protocol_exchange_with_data(cmd,NULL,SD_CMDS[cmd].rx_data_size,confirm);
+int32_t sprt_receive(uint8_t cmd, uint8_t confirm){
+    return _sprt_exchange_with_data(cmd,NULL,SD_CMDS[cmd].rx_data_size,confirm);
 }
 
 /*
@@ -563,8 +563,8 @@ int32_t serial_protocol_receive(uint8_t cmd, uint8_t confirm){
  * Send SD_CMDS[cmd].tx_data and receive into SD_CMDS[cmd].rx_data
  * 
  * */
-int32_t serial_protocol_exchange(uint8_t cmd, uint8_t confirm){
-    return _serial_protocol_exchange_with_data(cmd,SD_CMDS[cmd].tx_data, SD_CMDS[cmd].tx_data_size,confirm);
+int32_t sprt_exchange(uint8_t cmd, uint8_t confirm){
+    return _sprt_exchange_with_data(cmd,SD_CMDS[cmd].tx_data, SD_CMDS[cmd].tx_data_size,confirm);
 }
 
 
@@ -582,7 +582,7 @@ int32_t serial_protocol_exchange(uint8_t cmd, uint8_t confirm){
  * }
  * 
  * */
-int32_t sd_printf(uint8_t cmd,const char *fmt,...){
+int32_t sprt_printf(uint8_t cmd,const char *fmt,...){
   uint16_t pktsize=0;
   uint8_t raw_body_checksumm=0,i=0;
   va_list ap;
@@ -626,8 +626,8 @@ int32_t sd_printf(uint8_t cmd,const char *fmt,...){
 
 }
 
-int32_t serial_protocol_receive_cmds_version(void){
-  int32_t version_checksumm = serial_protocol_receive(0,1);//special system message
+int32_t sprt_receive_cmds_version(void){
+  int32_t version_checksumm = sprt_receive(0,1);//special system message
 
   if(version_checksumm < 0) return SD_RET_PROTOCOL_ERR;//error, timeout
 

@@ -139,7 +139,7 @@ int inputAvailable() {
 static void* serial_protocol_thread_fn(void *arg){
   (void)arg;
   while(1){
-    serial_protocol_main_loop_iterate();
+    sprt_main_loop_iterate();
     //~ usleep (1 * 1000); timeout in sd_read_byte is enough
   }
   return SD_RET_OK;
@@ -246,7 +246,7 @@ int sd_lld_write_timeout(uint8_t *buff,int size,int time_ms){
 
 
 
-int serial_protocol_thread_init(char *portname,int portspeed){
+int sprt_thread_init(char *portname,int portspeed){
 
   pthread_t serial_protocol_thread;
 
@@ -284,7 +284,7 @@ int serial_protocol_thread_init(char *portname,int portspeed){
   return SD_RET_OK;//ok
 }
 
-int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms){
+int32_t sprt_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms){
   int               rc;
   struct timespec   timeout,start,dt;
   dt.tv_sec = 0;
@@ -333,7 +333,7 @@ int32_t sd_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_m
 }
 
 
-void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
+void sd_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
   int rc;
   //~ printf("sd_broadcast_system_message\r\n");
 

@@ -158,30 +158,29 @@ typedef enum {//mask  0b01110000
 extern "C" {
 #endif
   /*standard user functions*/
-  int32_t serial_protocol_receive(uint8_t cmd, uint8_t confirm);
-  int32_t serial_protocol_send(uint8_t cmd, uint8_t confirm);
-  int32_t serial_protocol_exchange(uint8_t cmd, uint8_t confirm);
+  int32_t sprt_receive(uint8_t cmd, uint8_t confirm);
+  int32_t sprt_send(uint8_t cmd, uint8_t confirm);
+  int32_t sprt_exchange(uint8_t cmd, uint8_t confirm);
 
   /*functions for experts*/
-  int32_t _serial_protocol_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm);
-  int32_t _serial_protocol_exchange_with_data(uint8_t cmd, uint8_t *data, uint16_t data_size, uint8_t confirm);
-  int32_t _serial_protocol_fast_message(uint8_t raw_cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm);
+  int32_t _sprt_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm);
+  int32_t _sprt_exchange_with_data(uint8_t cmd, uint8_t *data, uint16_t data_size, uint8_t confirm);
+  int32_t _sprt_fast_message(uint8_t raw_cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm);
 
   /*special user functions*/
-  uint8_t calculate_version_checksumm(void);
-  int32_t serial_protocol_receive_cmds_version(void);
-  int32_t sd_printf(uint8_t cmd,const char *fmt,...);
-     void sd_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
-     void sd_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn);
+  uint8_t sprt_calculate_version_checksumm(void);
+  int32_t sprt_receive_cmds_version(void);
+  int32_t sprt_printf(uint8_t cmd,const char *fmt,...);
+     void sprt_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
+     void sprt_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn);
+  int32_t sprt_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms);
 
-  /*used in lld drivers*/
-     void serial_protocol_main_loop_iterate(void);
-
-  /*
-   * serial_protocol_thread_init
-   *
-   * exported from LLD drivers
-   */ 
+   /*
+    * Declaration of this function is system depenned, see header for your lld system driver
+    * 
+    * sprt_thread_init(...)
+    * 
+    * */
 
 #ifdef __cplusplus
 }

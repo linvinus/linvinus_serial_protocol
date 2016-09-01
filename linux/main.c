@@ -76,9 +76,9 @@ void check_send_receive(){
      * fill RobotCFG struct with data from remote side
      */
     //~ printf("<%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
-    res = serial_protocol_receive(SP_CONFIGURATION,SD_SYNC);
+    res = sprt_receive(SP_CONFIGURATION,SD_SYNC);
     printf("cmd=%d seq=%d\r\n",SP_CONFIGURATION,SD_SEQ_MASK(res>>16));
-    if(res <0) printf("error: serial_protocol_get_cmd(1,1)=%d\r\n",res);
+    if(res <0) printf("error: sprt_get_cmd(1,1)=%d\r\n",res);
     else{
       //~ printf(">%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
       if( (RobotCFG.A - RobotCFG2.A) != 1 ||
@@ -91,10 +91,10 @@ void check_send_receive(){
        * Send RobotCFG struct to remote side,
        * on remote side, after receiving, special callback function will be called,
        * witch will update data in RobotCFG,
-       * so, after next serial_protocol_receive we will get updated data
+       * so, after next sprt_receive we will get updated data
        */
-      res = serial_protocol_send(SP_CONFIGURATION,SD_SYNC);
-      if(res <0) printf("error: serial_protocol_set_cmd(1,1)\r\n");
+      res = sprt_send(SP_CONFIGURATION,SD_SYNC);
+      if(res <0) printf("error: sprt_set_cmd(1,1)\r\n");
 
     }
 }//check_send_receive
@@ -105,10 +105,10 @@ void check_exchange(){
      * fill RobotCFG struct with data from remote side
      */
     //~ printf("<%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
-    res = serial_protocol_exchange(SP_CONFIGURATION,SD_ASYNC);
+    res = sprt_exchange(SP_CONFIGURATION,SD_ASYNC);
     printf("cmd=%d seq=%d\r\n",SP_CONFIGURATION,res);
-    res = sd_wait_system_message(SD_SEQ_MASK(res),SP_CONFIGURATION, SD_DEFAULT_TIMEOUT);
-    if(res <0) printf("error: serial_protocol_get_cmd(1,1)=%d\r\n",res);
+    res = sprt_wait_system_message(SD_SEQ_MASK(res),SP_CONFIGURATION, SD_DEFAULT_TIMEOUT);
+    if(res <0) printf("error: sprt_get_cmd(1,1)=%d\r\n",res);
     else{
       //~ printf(">%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
       if( (RobotCFG.A - RobotCFG2.A) != 1 ||
@@ -124,12 +124,12 @@ int main(void) {
 
   setbuf(stdout, NULL);// disable buffering entirely
 
-  if(serial_protocol_thread_init("/dev/rfcomm1",B115200)){
-    printf("serial_protocol_thread_init error\r\n");
+  if(sprt_thread_init("/dev/rfcomm1",B115200)){
+    printf("sprt_thread_init error\r\n");
     exit(EXIT_FAILURE);
   }
 
-  sd_register_protocol_inform_func(sd_protocol_inform_callback);
+  sprt_register_protocol_inform_func(sd_protocol_inform_callback);
 
 
 
@@ -141,7 +141,7 @@ int main(void) {
     usleep (1000 * 1000);//1s
     printf("Checking version...\r\n");
     sd_protocol_flush();
-    remote_checksumm = serial_protocol_receive_cmds_version();
+    remote_checksumm = sprt_receive_cmds_version();
   }while(remote_checksumm < 0);
 
 /*
