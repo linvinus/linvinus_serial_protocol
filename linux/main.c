@@ -138,7 +138,7 @@ int main(void) {
   do{
     usleep (1000 * 1000);//1s
     printf("Checking version...\r\n");
-    sd_lld_flush();
+    sprt_lld_flush();
     remote_checksumm = sprt_receive_cmds_version();
   }while(remote_checksumm < 0);
 
@@ -162,7 +162,7 @@ int main(void) {
       check_exchange();//should be twice fast as check_send_receive()
     clock_gettime(CLOCK_MONOTONIC, &end);
 
-    sd_lld_timespec_diff(&start,&end,&dt);
+    sprt_lld_timespec_diff(&start,&end,&dt);
 
     printf("transaction time: %dms \r\n",(int)(dt.tv_nsec/1000000 + dt.tv_sec*1000)) ;
 

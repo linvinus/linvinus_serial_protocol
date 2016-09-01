@@ -136,7 +136,7 @@ int inputAvailable() {
   //~ return (FD_ISSET(STDIN_FILENO, &fds));
 }*/
 
-static void* _sd_lld_thread_fn(void *arg){
+static void* _sprt_lld_thread_fn(void *arg){
   (void)arg;
   while(1){
     _sprt_main_loop_iterate();
@@ -152,7 +152,7 @@ static void* _sd_lld_thread_fn(void *arg){
  * return >= 0 - value
  * return <  0 - error
  * */
-int sd_lld_get_timeout(int time_ms){
+int sprt_lld_get_timeout(int time_ms){
   uint8_t byte=0;
 
   struct timeval timeout;
@@ -184,7 +184,7 @@ int sd_lld_get_timeout(int time_ms){
 /* sd_put_timeout
  * return 0 - SUCCSESS
  * */
-int sd_lld_put_timeout(char b,int time_ms){
+int sprt_lld_put_timeout(char b,int time_ms){
 
 
   DEBUG_SERIAL("*** w=0x%02d ",(uint8_t)b);
@@ -216,7 +216,7 @@ int sd_lld_put_timeout(char b,int time_ms){
 /* sd_write_timeout
  * return - size of written data
  * */
-int sd_lld_write_timeout(uint8_t *buff,int size,int time_ms){
+int sprt_lld_write_timeout(uint8_t *buff,int size,int time_ms){
   int i;
   for(i=0;i<size;i++){
     DEBUG_SERIAL("w[%d]=0x%02x ",i,buff[i]);
@@ -274,7 +274,7 @@ int sprt_thread_init(char *portname,int portspeed){
 
   //~ usleep (5000 * 1000);//for /dev/rfcomm1
 
-  iret1 = pthread_create( &serial_protocol_thread, NULL, _sd_lld_thread_fn, (void*) NULL);
+  iret1 = pthread_create( &serial_protocol_thread, NULL, _sprt_lld_thread_fn, (void*) NULL);
   if(iret1){
     fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
     exit(EXIT_FAILURE);
@@ -312,7 +312,7 @@ int32_t sprt_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout
           return system_message;//Delivered successful
       }else{
         clock_gettime(CLOCK_MONOTONIC, &dt);
-        sd_lld_timespec_diff(&start,&dt,&dt);
+        sprt_lld_timespec_diff(&start,&dt,&dt);
         if(dt.tv_nsec < 1000000*timeout_ms){
           continue;//not timeout yet, wait a bit more
         }else{
@@ -331,7 +331,7 @@ int32_t sprt_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout
 }
 
 
-void sd_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
+void sprt_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
   int rc;
   //~ printf("sd_broadcast_system_message\r\n");
 
@@ -351,7 +351,7 @@ void sd_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state
   pthread_mutex_unlock(&mutex);
 }
 
-uint16_t sd_lld_lock_buffer(uint32_t time_ms){
+uint16_t sprt_lld_lock_buffer(uint32_t time_ms){
   int               rc;
   struct timespec   timeout,now,dt;
   dt.tv_sec = 0;
@@ -367,21 +367,21 @@ uint16_t sd_lld_lock_buffer(uint32_t time_ms){
 }
 
 
-uint16_t sd_lld_unlock_buffer(void){
+uint16_t sprt_lld_unlock_buffer(void){
   pthread_mutex_unlock(&mutex_buffer);
   return 1;//always true
 }
 
-void sd_lld_flush(void){
+void sprt_lld_flush(void){
   tcflush(TTY_fd, TCIOFLUSH);
 }
 
-int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap){
+int sprt_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap){
   int retval = vsnprintf((char *)str,size,fmt,ap); /* Return number of bytes that would have been written.*/
   return retval;
 }
 
-void sd_lld_timespec_diff(struct timespec *start,struct timespec *stop,struct timespec *result)
+void sprt_lld_timespec_diff(struct timespec *start,struct timespec *stop,struct timespec *result)
 {
     if ((stop->tv_nsec - start->tv_nsec) < 0) {
         result->tv_sec = stop->tv_sec - start->tv_sec - 1;

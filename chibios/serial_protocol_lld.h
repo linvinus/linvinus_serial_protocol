@@ -22,7 +22,7 @@
 
 #include "ch.h"
 #include "hal.h"
-#include <stdarg.h> /*va_list for sd_lld_sprintf*/
+#include <stdarg.h> /*va_list for sprt_lld_sprintf*/
 
 extern uint8_t cobs_buf1[SD_BUFFER_LENGTH];
 
@@ -30,19 +30,19 @@ extern uint8_t cobs_buf1[SD_BUFFER_LENGTH];
  * return >= 0 - value
  * return <  0 - error
  * */
-#define sd_lld_get_timeout(time_ms) sdGetTimeout(&SD1,MS2ST(time_ms))
+#define sprt_lld_get_timeout(time_ms) sdGetTimeout(&SD1,MS2ST(time_ms))
 
 /*
  * return 0 - SUCCSESS
  * */
-#define sd_lld_put_timeout(byte,time_ms) sdPutTimeout(&SD1,byte,MS2ST(time_ms))
+#define sprt_lld_put_timeout(byte,time_ms) sdPutTimeout(&SD1,byte,MS2ST(time_ms))
 /*
  * return - size of written data
  * */
-#define sd_lld_write_timeout(buff,size,time_ms) sdWriteTimeout(&SD1,buff,size,MS2ST(time_ms))
+#define sprt_lld_write_timeout(buff,size,time_ms) sdWriteTimeout(&SD1,buff,size,MS2ST(time_ms))
 
-#define sd_lld_syslock() chSysLock()
-#define sd_lld_sysunlock() chSysUnlock()
+#define sprt_lld_syslock() chSysLock()
+#define sprt_lld_sysunlock() chSysUnlock()
 
 #define sd_wait_for_chars(count) \
       while(1){ \
@@ -60,10 +60,10 @@ extern "C" {
 #endif
 
              void sprt_thread_init(void);
-  inline     void sd_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms);
-  inline uint16_t sd_lld_lock_buffer(uint32_t time_ms);
-  inline uint16_t sd_lld_unlock_buffer(void);
-              int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap);
+  inline     void sprt_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms);
+  inline uint16_t sprt_lld_lock_buffer(uint32_t time_ms);
+  inline uint16_t sprt_lld_unlock_buffer(void);
+              int sprt_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap);
              /*from serial_protocol.c*/
              void _sprt_main_loop_iterate(void);
 

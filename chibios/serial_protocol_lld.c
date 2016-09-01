@@ -21,7 +21,7 @@
 #include "hal.h"
 #include "serial_protocol.h"
 #include "memstreams.h"
-#include <stdarg.h> /*va_list for sd_lld_sprintf*/
+#include <stdarg.h> /*va_list for sprt_lld_sprintf*/
 #include "chprintf.h" /*chvprintf*/
 
 static threads_queue_t sd_protocol_q_waiting;
@@ -45,16 +45,16 @@ inline int32_t sprt_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t 
   return SD_RET_TIME_ERR;//timeout anyway
 }
 
-inline void sd_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
+inline void sprt_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms){
   (void)timeout_ms;
   chThdDequeueAllI(&sd_protocol_q_waiting,((uint32_t)sequence<<16 |(uint32_t)cmd<<8 |state));
 }
 
-inline uint16_t sd_lld_lock_buffer(uint32_t time_ms){
+inline uint16_t sprt_lld_lock_buffer(uint32_t time_ms){
   return (chBSemWaitTimeout(&SD_BUFF_SEM,MS2ST(time_ms)) == MSG_OK);
 }
 
-inline uint16_t sd_lld_unlock_buffer(){
+inline uint16_t sprt_lld_unlock_buffer(){
   chBSemSignal(&SD_BUFF_SEM);
   return 1;//always true
 }
@@ -77,7 +77,7 @@ void sprt_thread_init(void){
   chThdCreateStatic(waThreadSerialProtocol, sizeof(waThreadSerialProtocol), NORMALPRIO+1, ThreadSerialProtocol, NULL);
 }
 
-int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap){
+int sprt_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap){
   /* Require :
    * $(CHIBIOS)/os/hal/lib/streams/memstreams.c
    * $(CHIBIOS)/os/hal/lib/streams/chprintf.c
