@@ -152,7 +152,7 @@ static void* serial_protocol_thread_fn(void *arg){
  * return >= 0 - value
  * return <  0 - error
  * */
-int sd_get_timeout(int time_ms){
+int sd_lld_get_timeout(int time_ms){
   uint8_t byte=0;
 
   struct timeval timeout;
@@ -184,7 +184,7 @@ int sd_get_timeout(int time_ms){
 /* sd_put_timeout
  * return 0 - SUCCSESS
  * */
-int sd_put_timeout(char b,int time_ms){
+int sd_lld_put_timeout(char b,int time_ms){
 
 
   DEBUG_SERIAL("*** w=0x%02d ",(uint8_t)b);
@@ -216,7 +216,7 @@ int sd_put_timeout(char b,int time_ms){
 /* sd_write_timeout
  * return - size of written data
  * */
-int sd_write_timeout(uint8_t *buff,int size,int time_ms){
+int sd_lld_write_timeout(uint8_t *buff,int size,int time_ms){
   int i;
   for(i=0;i<size;i++){
     DEBUG_SERIAL("w[%d]=0x%02x ",i,buff[i]);
@@ -353,7 +353,7 @@ void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uin
   pthread_mutex_unlock(&mutex);
 }
 
-uint16_t sd_lock_buffer(uint32_t time_ms){
+uint16_t sd_lld_lock_buffer(uint32_t time_ms){
   int               rc;
   struct timespec   timeout,now,dt;
   dt.tv_sec = 0;
@@ -369,7 +369,7 @@ uint16_t sd_lock_buffer(uint32_t time_ms){
 }
 
 
-uint16_t sd_unlock_buffer(void){
+uint16_t sd_lld_unlock_buffer(void){
   pthread_mutex_unlock(&mutex_buffer);
   return 1;//always true
 }
@@ -383,8 +383,7 @@ int sd_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap){
   return retval;
 }
 
-void sd_lld_timespec_diff(struct timespec *start, struct timespec *stop,
-                   struct timespec *result)
+void sd_lld_timespec_diff(struct timespec *start,struct timespec *stop,struct timespec *result)
 {
     if ((stop->tv_nsec - start->tv_nsec) < 0) {
         result->tv_sec = stop->tv_sec - start->tv_sec - 1;

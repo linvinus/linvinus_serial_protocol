@@ -46,6 +46,7 @@ void sd_protocol_inform_callback(uint8_t sequence,uint8_t cmd,uint8_t state){
   switch( SD_SEQ_SYSMES_MASK(sequence) ){
     case   SP_OK:
       //~ c="SP_OK";
+      return;
     break;
     case SP_UNKNOWNCMD:
       c="SP_UNKNOWNCMD";

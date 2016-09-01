@@ -50,11 +50,11 @@ inline void sd_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t st
   chThdDequeueAllI(&sd_protocol_q_waiting,((uint32_t)sequence<<16 |(uint32_t)cmd<<8 |state));
 }
 
-inline uint16_t sd_lock_buffer(uint32_t time_ms){
+inline uint16_t sd_lld_lock_buffer(uint32_t time_ms){
   return (chBSemWaitTimeout(&SD_BUFF_SEM,MS2ST(time_ms)) == MSG_OK);
 }
 
-inline uint16_t sd_unlock_buffer(){
+inline uint16_t sd_lld_unlock_buffer(){
   chBSemSignal(&SD_BUFF_SEM);
   return 1;//always true
 }

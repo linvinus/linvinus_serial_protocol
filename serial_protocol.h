@@ -152,32 +152,36 @@ typedef enum {//mask  0b01110000
 }SerialPacketSystemMessageReason_t;
 
 #define SP_SYSTEM_MESSAGE  0
-//~ typedef enum {
-  //~ SP_SYSTEM_MESSAGE = 0
-//~ }SerialPacketType_t;
-//~ typedef enum SerialPacketType_t SerialPacketType_t;
-
 
 #if !defined(_FROM_ASM_)
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-  void serial_protocol_main_loop_iterate(void);
-
+  /*standard user functions*/
   int32_t serial_protocol_receive(uint8_t cmd, uint8_t confirm);
   int32_t serial_protocol_send(uint8_t cmd, uint8_t confirm);
   int32_t serial_protocol_exchange(uint8_t cmd, uint8_t confirm);
-  int32_t _serial_protocol_send_with_data(uint8_t cmd, void *data, uint16_t data_size, uint8_t confirm);
-  int32_t _serial_protocol_exchange_with_data(uint8_t cmd, uint8_t *data, uint16_t data_size, uint8_t confirm);
 
+  /*functions for experts*/
+  int32_t _serial_protocol_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm);
+  int32_t _serial_protocol_exchange_with_data(uint8_t cmd, uint8_t *data, uint16_t data_size, uint8_t confirm);
+  int32_t _serial_protocol_fast_message(uint8_t raw_cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm);
+
+  /*special user functions*/
   uint8_t calculate_version_checksumm(void);
   int32_t serial_protocol_receive_cmds_version(void);
   int32_t sd_printf(uint8_t cmd,const char *fmt,...);
-  
-  void sd_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
-  int serial_protocol_fast_message(uint8_t cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm);
-  void sd_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn);
+     void sd_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
+     void sd_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn);
+
+  /*used in lld drivers*/
+     void serial_protocol_main_loop_iterate(void);
+
+  /*
+   * serial_protocol_thread_init
+   *
+   * exported from LLD drivers
+   */ 
 
 #ifdef __cplusplus
 }
