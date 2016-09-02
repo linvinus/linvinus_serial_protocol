@@ -45,6 +45,13 @@
 #define SD_DEFAULT_TIMEOUT 500 /*in ms*/
 #define SD_SYNC 1
 #define SD_ASYNC 0
+/*
+ * COBS_SYMBOL - any byte that will be epsend in encoded data
+ *
+ * */
+//~ #define COBS_SYMBOL 'L'
+#define COBS_SYMBOL 0
+
 
 #include "serial_protocol_lld.h"
 
@@ -88,7 +95,7 @@ typedef struct{
  uint8_t cmd;       // 0-6bits = cmd, 7th bit indicate GET (0x80) or SET command
  uint8_t size;      // body size
  uint8_t invchksumm;// body inverse check summ
-}sd_header_t, *psd_header_t;
+}sprt_header_t, *psprt_header_t;
 
 /*  SYSTEM MESSAGE FORMAT [0]cobsencoded([sequence][cmd][size][invchksumm])
  *  [0] - COBS_SYMBOL
@@ -99,7 +106,7 @@ typedef struct{
  *  uint8_t cmd;       // always == SP_SYSTEM_MESSAGE
  *  uint8_t size;      // cmd for which this system mssage generated, without 7th bit
  *  uint8_t invchksumm;// status in system message (any arbitrary value)
- * }sd_header_t, *psd_header_t;
+ * }sprt_header_t, *psprt_header_t;
  *
  * system message reason description and invchksumm meaning
  *  SP_OK - delivery confirmation,
@@ -120,7 +127,7 @@ typedef struct{
 
 
 
-typedef uint8_t (*SD_FAST_MESSAGE_CALLBACK_t)(sd_header_t *hdr);
+typedef uint8_t (*SD_FAST_MESSAGE_CALLBACK_t)(sprt_header_t *hdr);
 typedef void (*SD_PROTOCOL_INFORM_CALLBACK_t)(uint8_t sequence,uint8_t cmd,uint8_t state);
 
 typedef uint8_t (*SD_CALLBACK)(uint16_t data_size,uint8_t *data,void *arg);
@@ -164,12 +171,13 @@ extern "C" {
 
   /*functions for experts*/
   int32_t _sprt_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm);
-  int32_t _sprt_exchange_with_data(uint8_t cmd, uint8_t *data, uint16_t data_size, uint8_t confirm);
+  int32_t _sprt_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm);
   int32_t _sprt_fast_message(uint8_t raw_cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm);
 
   /*special user functions*/
   uint8_t sprt_calculate_version_checksumm(void);
   int32_t sprt_receive_cmds_version(void);
+  int32_t sprt_vsprintf(uint8_t cmd,const char *fmt,va_list ap);
   int32_t sprt_printf(uint8_t cmd,const char *fmt,...);
      void sprt_register_fast_message_func(SD_FAST_MESSAGE_CALLBACK_t fn);
      void sprt_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn);

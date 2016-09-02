@@ -23,7 +23,6 @@
 
 
 #include "serial_protocol.h"
-#include "cobs.h"
 
 #include <stdarg.h> /*va_list for sd_printf*/
 
@@ -55,7 +54,9 @@ static cobs_state_t cobs_state_rx; //store state between calls of cobs_receive_d
 
 #define cobs_rx_reset() {cobs_state_rx.n = 0;}
 
-static int16_t build_and_send_package(sd_header_t *hdr,uint8_t bodysize,uint8_t* body){
+static size_t cobs_encode(const uint8_t* source, size_t size, uint8_t* destination);
+
+static int16_t build_and_send_package(sprt_header_t *hdr,uint8_t bodysize,uint8_t* body){
   uint16_t pktsize=0,i;
   uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET;//after cobs_encode data will be starting from [0]
   uint8_t *hdrp=(uint8_t *)hdr;
@@ -105,7 +106,7 @@ static int16_t build_and_send_package(sd_header_t *hdr,uint8_t bodysize,uint8_t*
 
 }//build_and_send_package
 
-static int16_t call_callback_build_and_send_package(sd_header_t *hdr,SD_CALLBACK callback){
+static int16_t call_callback_build_and_send_package(sprt_header_t *hdr,SD_CALLBACK callback){
   uint16_t pktsize=0;
   uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET;//after cobs_encode data will be starting from [0]
   uint8_t *hdrp=(uint8_t *)hdr;
@@ -204,15 +205,48 @@ static inline size_t cobs_start_receiving_and_decode(size_t pktsize, uint8_t* de
   return cobs_receive_decode(pktsize, destination,0);
 }
 
+static size_t cobs_encode(const uint8_t* source, size_t size, uint8_t* destination){
+    size_t read_index  = 0;
+    size_t write_index = 1;
+    size_t code_index  = 0;
+    uint8_t code       = 1;
+
+    while(read_index < size)
+    {
+        if(source[read_index] == COBS_SYMBOL)
+        {
+            destination[code_index] = code;
+            code = 1;
+            code_index = write_index++;
+            read_index++;
+        }
+        else
+        {
+            destination[write_index++] = source[read_index++];
+            code++;
+
+            if(code == 0xFF)
+            {
+                destination[code_index] = code;
+                code = 1;
+                code_index = write_index++;
+            }
+        }
+    }
+
+    destination[code_index] = code;
+
+    return write_index;
+}
 
 /* skip current packet body because of some error */
-static inline void skip(sd_header_t *hdr){
+static inline void skip(sprt_header_t *hdr){
   uint8_t s = hdr->size;
   while( s-- > 0 && sprt_lld_get_timeout(100) >=0)
     ;
 }
 
-static inline void system_message_answer(sd_header_t *hdr, SerialPacketSystemMessageReason_t reason, uint8_t status){
+static inline void system_message_answer(sprt_header_t *hdr, SerialPacketSystemMessageReason_t reason, uint8_t status){
   /*USED SYSTEM MESSAGE FORMAT! SEE ABOVE*/
   hdr->sequence = SD_SEQ_CREATE(hdr->sequence,0)| SD_SEQ_SYSMES_MASK(reason);//remove confirm bit, add reason
   hdr->size = hdr->cmd;                          //store current cmd in size
@@ -221,13 +255,13 @@ static inline void system_message_answer(sd_header_t *hdr, SerialPacketSystemMes
   build_and_send_package(hdr, 0, NULL);
 }
 
-static inline void system_message_answer_error(sd_header_t *hdr, SerialPacketSystemMessageReason_t reason, uint8_t status){
+static inline void system_message_answer_error(sprt_header_t *hdr, SerialPacketSystemMessageReason_t reason, uint8_t status){
   if(protocol_inform_fn != NULL)
     protocol_inform_fn(hdr->sequence | SD_SEQ_SYSMES_MASK(reason), hdr->cmd, status);
   system_message_answer(hdr,reason,status);
 }
 
-static inline void skip_and_aswer_error(sd_header_t *hdr, SerialPacketSystemMessageReason_t err, uint8_t status){
+static inline void skip_and_aswer_error(sprt_header_t *hdr, SerialPacketSystemMessageReason_t err, uint8_t status){
   skip(hdr);
   system_message_answer_error(hdr,err,status);
 }
@@ -261,7 +295,7 @@ void _sprt_main_loop_iterate(void){
        * recieve header
        * */
       uint8_t header[SD_HEADER_SIZE]={0};
-      sd_header_t *hdr = (sd_header_t *)header;
+      sprt_header_t *hdr = (sprt_header_t *)header;
 
       //~ sprt_lld_wait_for_chars(3);//wait for count of SD_HEADER_SIZE
 
@@ -451,7 +485,7 @@ void sprt_register_protocol_inform_func(SD_PROTOCOL_INFORM_CALLBACK_t fn){
   protocol_inform_fn = fn;
 }
 
-static int32_t _sprt_process_command(sd_header_t *hdr,size_t body_size,uint8_t* body, uint8_t confirm){
+static int32_t _sprt_process_command(sprt_header_t *hdr,size_t body_size,uint8_t* body, uint8_t confirm){
 
     if( build_and_send_package(hdr, body_size, body) == (int16_t)(SD_HEADER_SIZE+ body_size +1) ){
         if(confirm)
@@ -474,8 +508,8 @@ static int32_t _sprt_process_command(sd_header_t *hdr,size_t body_size,uint8_t* 
  *         <0  - on error
  * */
 int32_t _sprt_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm){
-  sd_header_t hdr1;
-  sd_header_t  *hdr = &hdr1;
+  sprt_header_t hdr1;
+  sprt_header_t  *hdr = &hdr1;
 
   cmd = SD_CMD_INDEX_MASK(cmd);                       //ensure that command index is correct
 
@@ -504,8 +538,8 @@ int32_t _sprt_exchange_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size,
  *         <0  - on error
  * */
 int32_t _sprt_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uint8_t confirm){
-  sd_header_t hdr1;
-  sd_header_t  *hdr = &hdr1;
+  sprt_header_t hdr1;
+  sprt_header_t  *hdr = &hdr1;
 
   cmd = SD_CMD_INDEX_MASK(cmd);                               //ensure that command index is correct
 
@@ -528,8 +562,8 @@ int32_t _sprt_send_with_data(uint8_t cmd, uint8_t *body, uint16_t body_size, uin
  *         <0  - on error
  * */
 int32_t _sprt_fast_message(uint8_t raw_cmd, uint8_t dataA, uint8_t dataB, uint8_t confirm){
-    sd_header_t hdr1;
-    sd_header_t  *hdr = &hdr1;
+    sprt_header_t hdr1;
+    sprt_header_t  *hdr = &hdr1;
     hdr->sequence = SD_SEQ_CREATE(++last_sequence,confirm);    //set confirm if required
     hdr->cmd = raw_cmd;                                        //raw cmd send as is, but answer must be masked with SD_CMD_INDEX_MASK()
     hdr->size = dataA;                                         //raw dataA
@@ -585,9 +619,17 @@ int32_t sprt_exchange(uint8_t cmd, uint8_t confirm){
  *
  * */
 int32_t sprt_printf(uint8_t cmd,const char *fmt,...){
+    int32_t ret;
+    va_list ap;
+    va_start(ap, fmt);
+    ret = sprt_vsprintf(cmd, fmt,ap);
+    va_end(ap);
+    return ret;
+}
+
+int32_t sprt_vsprintf(uint8_t cmd,const char *fmt,va_list ap){
   uint16_t pktsize=0;
   uint8_t raw_body_checksumm=0,i=0;
-  va_list ap;
 
   uint8_t *raw = cobs_buf_p + COBSBUF_RAW_DATA_OFFCET;//after cobs_encode data will be starting from [0]
 
@@ -598,9 +640,9 @@ int32_t sprt_printf(uint8_t cmd,const char *fmt,...){
 
 
 
-    va_start(ap, fmt);
+    //~ va_start(ap, fmt);
     bodysize = sprt_lld_sprintf(raw_body, bodysize,fmt,ap);
-    va_end(ap);
+    //~ va_end(ap);
 
     for( i=0; i < bodysize; i++){
       raw_body_checksumm += *(raw_body++);
