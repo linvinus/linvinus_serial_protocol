@@ -81,7 +81,7 @@ int sprt_lld_write_timeout(uint8_t *buff,int size,int time_ms){
       return -1;//error timeout
     }
   }
-  return size;
+  return (size-sz);
 }
 
 uint8_t last_sys_message[4];
