@@ -17,8 +17,6 @@ extern "C" {
 #include <stdarg.h> /*va_list for sprt_lld_sprintf*/
 //#include <time.h>   /*for struct timespec*/
 
-#define sprt_lld_lock_buffer(a) (1)
-#define sprt_lld_unlock_buffer(a) (1)
 #define sprt_lld_syslock()
 #define sprt_lld_sysunlock()
 #define sprt_lld_wait_for_chars(s)
@@ -33,8 +31,8 @@ extern "C" {
      int sprt_lld_put_timeout(char b,int time_ms);
      int sprt_lld_get_timeout(int time_ms);
      int sprt_lld_write_timeout(uint8_t *buff,int size,int time_ms);
-//~ uint16_t sprt_lld_lock_buffer(uint32_t time_ms);
-//~ uint16_t sprt_lld_unlock_buffer(void);
+uint16_t sprt_lld_lock_buffer(uint32_t time_ms);
+uint16_t sprt_lld_unlock_buffer(void);
      int sprt_lld_sprintf(uint8_t *str, size_t size, const char *fmt,va_list ap);
     //void sprt_lld_timespec_diff(struct timespec *start, struct timespec *stop, struct timespec *result);
     void sprt_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t state,uint32_t timeout_ms);

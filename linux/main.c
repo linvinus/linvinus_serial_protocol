@@ -104,13 +104,13 @@ void check_exchange(){
     /*
      * fill RobotCFG struct with data from remote side
      */
-    //~ printf("<%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
+    printf("<%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
     res = sprt_exchange(SP_CONFIGURATION,SD_ASYNC);
     printf("cmd=%d seq=%d\r\n",SP_CONFIGURATION,res);
     res = sprt_wait_system_message(SD_SEQ_MASK(res),SP_CONFIGURATION, SD_DEFAULT_TIMEOUT);
     if(res <0) printf("error: sprt_get_cmd(1,1)=%d\r\n",res);
     else{
-      //~ printf(">%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
+      printf(">%d %d %d %d\r\n",pRobotCFG->A,pRobotCFG->B,pRobotCFG->C,pRobotCFG->D);
       if( (RobotCFG.A - RobotCFG2.A) != 1 ||
           (RobotCFG.B - RobotCFG2.B) != 1  ){
           printf("error: %d!=%d %d!=%d \r\n",RobotCFG.A, RobotCFG2.A,RobotCFG.B, RobotCFG2.B);
@@ -126,7 +126,8 @@ int main(void) {
 
   sprt_register_protocol_inform_func(sd_protocol_inform_callback);
 
-  if(sprt_thread_init("/dev/rfcomm1",B115200)){
+  //~ if(sprt_thread_init("/dev/rfcomm1",B115200)){
+  if(sprt_thread_init("/dev/ttyUSB0",B115200)){
     printf("sprt_thread_init error\r\n");
     exit(EXIT_FAILURE);
   }
@@ -154,12 +155,13 @@ int main(void) {
   }
 */
   struct timespec   start,end,dt;
-  
+
   while(1){
 
     clock_gettime(CLOCK_MONOTONIC, &start);
       //~ check_send_receive();
       check_exchange();//should be twice fast as check_send_receive()
+      //~ usleep (1000 * 1000);//1s
     clock_gettime(CLOCK_MONOTONIC, &end);
 
     sprt_lld_timespec_diff(&start,&end,&dt);
