@@ -48,7 +48,7 @@ class SPrt
 
     void begin(unsigned long baud, size_t port = 0)
         {
-            //~ switch(port) 
+            //~ switch(port)
             //~ {
             //~ #if defined(UBRR1H)
                 //~ case 1:
@@ -74,18 +74,22 @@ class SPrt
             //~ }
             sptr_serial->begin(baud);
     }
-    
+
     //~ void begin(Stream* serial)
     //~ {
         //~ _serial = serial;
     //~ }
-    
+
     void update()
     {
       if (sptr_serial == 0) return;
       if(sptr_serial->available() > 0){
         _sprt_main_loop_iterate();
       }
+    }
+
+    void set_print_cmd(uint8_t cmd){
+      _print_cmd = cmd;
     }
 
     int32_t printf(uint8_t cmd,const char *fmt,...){
@@ -100,23 +104,22 @@ class SPrt
     void write(uint8_t cmd,uint8_t *buff,size_t count){
       _sprt_send_with_data(cmd,buff,count,0);
     }
-    
+
     int32_t receive(uint8_t cmd, bool confirm){
       return sprt_receive(cmd,confirm);
     }
-    
-    int32_t sprt_send(uint8_t cmd, bool confirm){
+
+    int32_t send(uint8_t cmd, bool confirm){
       return sprt_send(cmd, confirm);
     }
-    
-    int32_t sprt_exchange(uint8_t cmd, bool confirm){
+
+    int32_t exchange(uint8_t cmd, bool confirm){
       return sprt_exchange(cmd, confirm);
     }
-    
-    //~ void dot();
-    //~ void dash();
-  //~ private:
+
+  private:
     //~ Stream* _serial;
+    uint8_t _print_cmd;
 };
 
 #endif //SPrt_h

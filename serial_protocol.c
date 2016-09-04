@@ -257,7 +257,7 @@ static inline void system_message_answer(sprt_header_t *hdr, SerialPacketSystemM
 
 static inline void system_message_answer_error(sprt_header_t *hdr, SerialPacketSystemMessageReason_t reason, uint8_t status){
   if(protocol_inform_fn != NULL)
-    protocol_inform_fn(hdr->sequence | SD_SEQ_SYSMES_MASK(reason), hdr->cmd, status);
+    protocol_inform_fn(hdr->sequence | SD_SEQ_SYSMES_MASK(reason), hdr->cmd, status, !SD_ERR_FROM_REMOTE);
   system_message_answer(hdr,reason,status);
 }
 
@@ -305,7 +305,7 @@ void _sprt_main_loop_iterate(void){
         if(hdr->cmd == SP_SYSTEM_MESSAGE){                                                           /* received protocol system message */
             sprt_lld_broadcast_system_message(hdr->sequence, hdr->size, hdr->invchksumm,500);
             if(protocol_inform_fn != NULL)
-              protocol_inform_fn(hdr->sequence, hdr->size, hdr->invchksumm);
+              protocol_inform_fn(hdr->sequence, hdr->size, hdr->invchksumm,SD_ERR_FROM_REMOTE);
         }else if(fast_message_fn != NULL && fast_message_fn(hdr)){                                   /* check for fast message */
           if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested
             //send ak
@@ -364,7 +364,7 @@ void _sprt_main_loop_iterate(void){
                         sprt_lld_broadcast_system_message(hdr->sequence, hdr->cmd, hdr->size,500);//inform our self for sync GET commands
                         /* for debug only
                         if(protocol_inform_fn != NULL)
-                          protocol_inform_fn(hdr->sequence, hdr->cmd, hdr->size);
+                          protocol_inform_fn(hdr->sequence, hdr->cmd, hdr->size,!SD_ERR_FROM_REMOTE);
                         */
 
                         if(SD_SEQ_ISCONFIRM(hdr->sequence)){ //comfirm requested

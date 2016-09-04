@@ -74,7 +74,7 @@ typedef enum {
   SP_PRINTF
 }SerialPacketType_t;
 
-SerialProtocolCmd_t SD_CMDS[]={
+const SerialProtocolCmd_t SD_CMDS[]={
   /*0 SP_SYSTEM_MESSAGE*/
   MSG(MASTER_SLAVE_RXTX(0, NULL, NULL, NULL, 0, NULL, NULL, NULL))
   /*1 SP_CONFIGURATION*/
@@ -86,6 +86,6 @@ SerialProtocolCmd_t SD_CMDS[]={
   };
   //
 
-uint16_t SD_CMDS_COUNT = sizeof(SD_CMDS)/sizeof(SerialProtocolCmd_t);
+const uint16_t SD_CMDS_COUNT = sizeof(SD_CMDS)/sizeof(SerialProtocolCmd_t);
 
 #endif /* _SERIAL_PROTOCOL_MODULES_H_ */

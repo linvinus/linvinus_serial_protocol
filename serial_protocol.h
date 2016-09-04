@@ -45,6 +45,7 @@
 #define SD_DEFAULT_TIMEOUT 500 /*in ms*/
 #define SD_SYNC 1
 #define SD_ASYNC 0
+#define SD_ERR_FROM_REMOTE 1
 /*
  * COBS_SYMBOL - any byte that will be epsend in encoded data
  *
@@ -128,7 +129,7 @@ typedef struct{
 
 
 typedef uint8_t (*SD_FAST_MESSAGE_CALLBACK_t)(sprt_header_t *hdr);
-typedef void (*SD_PROTOCOL_INFORM_CALLBACK_t)(uint8_t sequence,uint8_t cmd,uint8_t state);
+typedef void (*SD_PROTOCOL_INFORM_CALLBACK_t)(uint8_t sequence,uint8_t cmd,uint8_t state, uint8_t from_remote);
 
 typedef uint8_t (*SD_CALLBACK)(uint16_t data_size,uint8_t *data,void *arg);
 
@@ -146,8 +147,8 @@ struct SerialProtocolCmd_t{
 };
 
 
-extern SerialProtocolCmd_t SD_CMDS[];
-extern uint16_t SD_CMDS_COUNT;
+extern const SerialProtocolCmd_t SD_CMDS[];
+extern const uint16_t SD_CMDS_COUNT;
 
 
 typedef enum {//mask  0b01110000
@@ -185,9 +186,9 @@ extern "C" {
 
    /*
     * Declaration of this function is system depenned, see header for your lld system driver
-    * 
+    *
     * sprt_thread_init(...)
-    * 
+    *
     * */
 
 #ifdef __cplusplus

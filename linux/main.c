@@ -41,7 +41,7 @@ uint8_t sd_printf_callback(uint16_t data_size,uint8_t *data,void *arg){
   return 0;//not used
 }
 
-void sd_protocol_inform_callback(uint8_t sequence,uint8_t cmd,uint8_t state){
+void sd_protocol_inform_callback(uint8_t sequence,uint8_t cmd,uint8_t state,uint8_t from_remote){
   char *c=NULL;
   switch( SD_SEQ_SYSMES_MASK(sequence) ){
     case   SP_OK:
@@ -65,7 +65,7 @@ void sd_protocol_inform_callback(uint8_t sequence,uint8_t cmd,uint8_t state){
   }
 
   if(c != NULL)
-    fprintf (stderr,"\r\ngot inform cmd(%d)[%d]=%d %s\r\n",(uint8_t)SD_CMD_INDEX_MASK(cmd),(uint8_t)SD_SEQ_MASK(sequence),(uint8_t)state,c);
+    fprintf (stderr,"\r\n %s inform cmd(%d)[%d]=%d %s\r\n",(from_remote? "got from remote": "send to remote"),(uint8_t)SD_CMD_INDEX_MASK(cmd),(uint8_t)SD_SEQ_MASK(sequence),(uint8_t)state,c);
 }
 
 RobotCFG_t RobotCFG2;
