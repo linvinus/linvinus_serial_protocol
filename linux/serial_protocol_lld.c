@@ -39,11 +39,11 @@ uint8_t cobs_buf1[SD_BUFFER_LENGTH];
 
 /**********************************************************************/
 static int TTY_fd;//TTY file descriptor
-static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; /*used to sync system messages*/
+static pthread_mutex_t mutex_sys_msg = PTHREAD_MUTEX_INITIALIZER; /*used to sync system messages*/
 static pthread_mutex_t mutex_buffer = PTHREAD_MUTEX_INITIALIZER; /*used for private access to cobs_buf1*/
 
 static pthread_condattr_t condattr;
-static pthread_cond_t condition = PTHREAD_COND_INITIALIZER; /*used to sync system messages*/
+static pthread_cond_t system_message_condition = PTHREAD_COND_INITIALIZER; /*used to sync system messages*/
 static uint32_t sd_last_system_message = 0; /*used to sync system messages*/
 
 /************************ Private functions ***************************/
@@ -51,6 +51,8 @@ static uint32_t sd_last_system_message = 0; /*used to sync system messages*/
 #define DEBUG_PROCOTOL(...) fprintf (stderr, __VA_ARGS__)
 //~ #define DEBUG_SERIAL(...) fprintf (stderr, __VA_ARGS__)
 #define DEBUG_SERIAL(...)
+//~ #define DEBUG_THREAD_CONDITION(...) fprintf (stderr, __VA_ARGS__)
+#define DEBUG_THREAD_CONDITION(...)
 
 # define timeradd(a, b, result) \
   do { \
@@ -252,7 +254,7 @@ int sprt_thread_init(char *portname,int portspeed){
 
   pthread_condattr_init(&condattr);
   pthread_condattr_setclock(&condattr, CLOCK_MONOTONIC);
-  pthread_cond_init(&condition, &condattr);
+  pthread_cond_init(&system_message_condition, &condattr);
 
   int  iret1;
 
@@ -282,9 +284,15 @@ int sprt_thread_init(char *portname,int portspeed){
   return SD_RET_OK;//ok
 }
 
+int32_t sd_last_system_messages[16];
+int sd_last_system_message_idx=0;
+#define SD_LAST_SYS_MSG_IDX_MASK (0b1111)
+
 int32_t sprt_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout_ms){
+  DEBUG_THREAD_CONDITION("{");
   int               rc;
-  struct timespec   timeout,start,dt;
+  struct timespec   timeout,start,dt,now;
+  int32_t system_message;
   dt.tv_sec = 0;
   dt.tv_nsec = 1000000*timeout_ms;//ms
 
@@ -297,36 +305,49 @@ int32_t sprt_wait_system_message(uint8_t sequence, uint8_t cmd, uint32_t timeout
 
   timeradd(&dt,&start,&timeout);
 
-  rc = pthread_mutex_lock(&mutex);
   do{
-    rc = pthread_cond_timedwait(&condition, &mutex, &timeout);
-    if( rc == 0){
-      if(  SD_SEQ_MASK(sd_last_system_message >> 16) == SD_SEQ_MASK(sequence) &&
-           SD_CMD_INDEX_MASK(sd_last_system_message >> 8) == SD_CMD_INDEX_MASK(cmd) ){
+    system_message=0;
+    rc = 0;
+    DEBUG_THREAD_CONDITION("-");
+    pthread_mutex_lock(&mutex_sys_msg);
 
-          int32_t system_message = (sd_last_system_message & (0xFFFFFF));
-          sd_last_system_message = 0;
+    int lidx = sd_last_system_message_idx;
 
-          rc = pthread_mutex_unlock(&mutex);
+    while(sd_last_system_message_idx == lidx && rc != ETIMEDOUT){
+      rc = pthread_cond_timedwait(&system_message_condition, &mutex_sys_msg, &timeout);//sleep and unlock mutex
+    }
+    int lidx_end = sd_last_system_message_idx;//mutex locked again
+    pthread_mutex_unlock(&mutex_sys_msg);
 
+    clock_gettime(CLOCK_REALTIME, &now);//DEBUG_THREAD_CONDITION
+
+    if( rc == 0 ){
+      while(lidx_end != lidx){
+        system_message = (sd_last_system_messages[(++lidx & SD_LAST_SYS_MSG_IDX_MASK)] & (0xFFFFFF));
+        if(  SD_SEQ_MASK(system_message >> 16) == SD_SEQ_MASK(sequence) &&
+             SD_CMD_INDEX_MASK(system_message >> 8) == SD_CMD_INDEX_MASK(cmd) ){
+
+          DEBUG_THREAD_CONDITION(" [s=%02d c=%d %d %d] ",SD_SEQ_MASK(system_message >> 16),SD_CMD_INDEX_MASK(system_message >> 8),now.tv_nsec,sched_getscheduler(0));
+          DEBUG_THREAD_CONDITION("}");
           return system_message;//Delivered successful
-      }else{
-        clock_gettime(CLOCK_MONOTONIC, &dt);
-        sprt_lld_timespec_diff(&start,&dt,&dt);
-        if(dt.tv_nsec < 1000000*timeout_ms){
-          continue;//not timeout yet, wait a bit more
-        }else{
-          rc = pthread_mutex_unlock(&mutex);
-          return SD_RET_TIME_ERR;//timeout, wrong cmd or sequence
         }
       }
+      //not found yet
+      clock_gettime(CLOCK_MONOTONIC, &dt);
+      sprt_lld_timespec_diff(&start,&dt,&dt);
+      if(dt.tv_nsec < 1000000*timeout_ms){
+        continue;//not timeout yet, wait a bit more
+      }else{
+          DEBUG_THREAD_CONDITION("}");
+        return SD_RET_TIME_ERR;//timeout, wrong cmd or sequence
+      }
     }else{
-      rc = pthread_mutex_unlock(&mutex);
+        DEBUG_THREAD_CONDITION("}");
       return SD_RET_TIME_ERR;//timeout
     }
   }while(1);
 
-  rc = pthread_mutex_unlock(&mutex);
+    DEBUG_THREAD_CONDITION("}");
   return SD_RET_TIME_ERR;//timeout anyway
 }
 
@@ -335,7 +356,7 @@ void sprt_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t sta
   int rc;
   //~ printf("sd_broadcast_system_message\r\n");
 
-  struct timespec   timeout,now,dt;
+  struct timespec   dt,now,timeout;
   dt.tv_sec = 0;
   dt.tv_nsec = 1000000*timeout_ms;//ms
 
@@ -343,12 +364,18 @@ void sprt_lld_broadcast_system_message(uint8_t sequence, uint8_t cmd,uint8_t sta
 
   timeradd(&dt,&now,&timeout);
 
-  rc = pthread_mutex_timedlock(&mutex,&timeout);//calling thread blocks until the mutex becomes available.
+  rc = pthread_mutex_timedlock(&mutex_sys_msg,&timeout);//calling thread blocks until the mutex becomes available.
   if(rc == 0){
-    sd_last_system_message = ((uint32_t)sequence<<16 |(uint32_t)cmd<<8 |state);
-    pthread_cond_broadcast(&condition);
+    /* pthread_cond_broadcast not always wakes up other threads in pthread_cond_timedwait,
+     * because process sheduler actually not switch after call pthread_cond_broadcast
+     * if system messges come too often then some messages could be lost by other threads,
+     * to prevent that we are using FIFO ring buffer*/
+    sd_last_system_messages[(++sd_last_system_message_idx & SD_LAST_SYS_MSG_IDX_MASK)] = ((uint32_t)sequence<<16 |(uint32_t)cmd<<8 |state);
+    pthread_cond_broadcast(&system_message_condition);
+    pthread_mutex_unlock(&mutex_sys_msg);
+    sched_yield();//not every call actually yield.
+    DEBUG_THREAD_CONDITION(" (s=%02d c=%d %d %d) ",sequence,cmd,now.tv_nsec,sched_getscheduler(0));
   }
-  pthread_mutex_unlock(&mutex);
 }
 
 uint16_t sprt_lld_lock_buffer(uint32_t time_ms){
