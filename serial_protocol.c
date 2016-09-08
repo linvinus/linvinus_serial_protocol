@@ -68,11 +68,32 @@ static int16_t build_and_send_package(sprt_header_t *hdr,uint8_t bodysize,uint8_
         uint8_t *raw_body = raw + SD_HEADER_SIZE;//reserve space for header
         uint8_t raw_body_checksumm = 0;
         //copy body to temporary buffer, calculate checksumm
+        i=bodysize;
+        #if !defined(__AVR_ARCH__)
+        /*for 32bit systems*/
+        uint32_t *body32=(uint32_t*)body;
+        uint32_t *raw_body32=(uint32_t*)raw_body;
+        
         sprt_lld_syslock();
-          for( i=0; i < bodysize; i++){
+        
+        while( i >3 ){
+            i-=4;
+            uint32_t t = *(body32++);
+            *(raw_body32++) = t;
+            raw_body_checksumm += (t & 0xff);
+            raw_body_checksumm += (t>>=8 & 0xff);
+            raw_body_checksumm += (t>>=8 & 0xff);
+            raw_body_checksumm += (t>>=8 & 0xff);
+        }
+        raw_body=(uint8_t*)raw_body32;
+        body=(uint8_t*)body32;
+        #else
+        sprt_lld_syslock();
+        #endif
+        while( i-- >0 ){
             *(raw_body++) = *(body);
             raw_body_checksumm += *(body++);
-          }
+        }
           //~ memccpy(,,bodysize,sizeof(uint8_t));
         sprt_lld_sysunlock();
 
@@ -343,10 +364,23 @@ void _sprt_main_loop_iterate(void){
 
                       if(rx_data != NULL){
                         //copy body to destination
+                        uint16_t i=hdr->size;
+                        #if !defined(__AVR_ARCH__)
+                        /*for 32bit systems*/
+                        uint32_t *raw32=(uint32_t*)raw;
+                        uint32_t *rx_data32=(uint32_t*)rx_data;
                         sprt_lld_syslock();
-                        uint16_t i;
-                        for(i=0; i < hdr->size; i++){
-                          *(rx_data++) = *(raw++);
+                        while( i >3){
+                          i-=4;
+                            *((uint32_t*)rx_data32) = *((uint32_t*)raw32);
+                        }
+                        uint8_t *raw=(uint8_t*)raw32;
+                        uint8_t *rx_data=(uint8_t*)rx_data32;
+                        #else
+                        sprt_lld_syslock();
+                        #endif
+                        while( i-- >0){
+                            *(rx_data++) = *(raw++);
                         }
                         sprt_lld_sysunlock();
                         sprt_lld_unlock_buffer();
@@ -643,8 +677,8 @@ int32_t sprt_vsprintf(uint8_t cmd,const char *fmt,va_list ap){
     //~ va_start(ap, fmt);
     bodysize = sprt_lld_sprintf(raw_body, bodysize,fmt,ap);
     //~ va_end(ap);
-
-    for( i=0; i < bodysize; i++){
+    i=bodysize;
+    while( i-- > 0){
       raw_body_checksumm += *(raw_body++);
     }
 
