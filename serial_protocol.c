@@ -372,7 +372,7 @@ void _sprt_main_loop_iterate(void){
                         sprt_lld_syslock();
                         while( i >3){
                           i-=4;
-                            *((uint32_t*)rx_data32) = *((uint32_t*)raw32);
+                            *((uint32_t*)rx_data32++) = *((uint32_t*)raw32++);
                         }
                         uint8_t *raw=(uint8_t*)raw32;
                         uint8_t *rx_data=(uint8_t*)rx_data32;
