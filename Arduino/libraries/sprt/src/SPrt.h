@@ -93,6 +93,7 @@ class SPrt
     }
 
     int32_t printf(uint8_t cmd,const char *fmt,...){
+      if(cmd == 0) return -1;
       int32_t ret;
       va_list ap;
       va_start(ap, fmt);
@@ -101,17 +102,38 @@ class SPrt
       return ret;
     }
 
-    void write(uint8_t cmd,uint8_t *buff,size_t count){
-      _sprt_send_with_data(cmd,buff,count,0);
+    int32_t printf(const char *fmt,...){
+      if(_print_cmd == 0) return -1;
+      int32_t ret;
+      va_list ap;
+      va_start(ap, fmt);
+      ret = sprt_vsprintf(_print_cmd,fmt,ap);
+      va_end(ap);
+      return ret;
+    }
+
+    size_t write(const char *str) {
+      if (str == NULL || _print_cmd == 0) return -1;
+      return send(_print_cmd,(uint8_t *)str, strlen(str),false);
+    }
+
+    size_t write(const char *buffer, size_t size) {
+      if (buffer == NULL || _print_cmd == 0 || size == 0) return -1;
+      return send(_print_cmd,(uint8_t *)buffer, size,false);
+    }
+
+    int32_t send(uint8_t cmd,uint8_t *buff,size_t count,uint8_t confirm){
+      return _sprt_send_with_data(cmd,buff,count,confirm);
+    }
+
+    int32_t send(uint8_t cmd, bool confirm){
+      return sprt_send(cmd, confirm);
     }
 
     int32_t receive(uint8_t cmd, bool confirm){
       return sprt_receive(cmd,confirm);
     }
 
-    int32_t send(uint8_t cmd, bool confirm){
-      return sprt_send(cmd, confirm);
-    }
 
     int32_t exchange(uint8_t cmd, bool confirm){
       return sprt_exchange(cmd, confirm);
@@ -119,7 +141,7 @@ class SPrt
 
   private:
     //~ Stream* _serial;
-    uint8_t _print_cmd;
+    uint8_t _print_cmd=0;
 };
 
 #endif //SPrt_h
